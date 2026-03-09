@@ -20,7 +20,7 @@ Paste this into your coding agent (Claude Code, Codex, Cursor, etc.):
 
 ```
 Clone https://github.com/kapitolph/nextpay-dev-vps.git then read
-client/client-prompt.md and walk me through the setup step by step.
+client/AGENTS.md and walk me through the setup step by step.
 ```
 
 <details>
@@ -33,7 +33,7 @@ bash client/setup.sh
 # Then: generate SSH key, configure ~/.ssh/config, commit key to keys/<name>.pub
 ```
 
-See `client/client-prompt.md` for the full step-by-step guide.
+See `client/AGENTS.md` for the full step-by-step guide.
 </details>
 
 ## Architecture
@@ -49,7 +49,7 @@ nextpay-dev-vps/
 └── client/
     ├── npdev                  # CLI script
     ├── setup.sh               # Client installer
-    └── client-prompt.md       # Agent-readable onboarding prompt
+    └── AGENTS.md              # Agent-readable onboarding prompt
 ```
 
 ### How Pair Programming Works
@@ -82,7 +82,7 @@ Then provision: `sudo bash server/setup.sh` on the new VPS.
 
 ## Adding a Developer
 
-1. Developer runs through `client/client-prompt.md` (or manual setup)
+1. Developer runs through `client/AGENTS.md` (or manual setup)
 2. They commit their public key to `keys/<name>.pub`
 3. Admin re-runs `sudo bash server/setup.sh` on each VPS to import the key
    (or manually: `echo '<key>' >> /home/dev/.ssh/authorized_keys`)
