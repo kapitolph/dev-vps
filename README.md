@@ -11,7 +11,7 @@ Shared VPS setup for pair programming via tmux. One repo provisions servers and 
 sudo bash server/setup.sh
 
 # Or curl-pipe (standalone):
-curl -fsSL https://raw.githubusercontent.com/kapitolph/nextpay-dev-vps/main/server/setup.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/kapitolph/dev-vps/main/server/setup.sh | sudo bash
 ```
 
 ### Client (each developer)
@@ -19,7 +19,7 @@ curl -fsSL https://raw.githubusercontent.com/kapitolph/nextpay-dev-vps/main/serv
 Paste this into your coding agent (Claude Code, Codex, Cursor, etc.):
 
 ```
-Clone https://github.com/kapitolph/nextpay-dev-vps.git then read
+Clone https://github.com/kapitolph/dev-vps.git then read
 client/AGENTS.md and walk me through the setup step by step.
 ```
 
@@ -27,7 +27,7 @@ client/AGENTS.md and walk me through the setup step by step.
 <summary>Manual setup (without an agent)</summary>
 
 ```bash
-git clone https://github.com/kapitolph/nextpay-dev-vps.git
+git clone https://github.com/kapitolph/dev-vps.git
 cd nextpay-dev-vps
 bash client/setup.sh
 # Then: generate SSH key, configure ~/.ssh/config, commit key to keys/<name>.pub
