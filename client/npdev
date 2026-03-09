@@ -1,0 +1,193 @@
+#!/usr/bin/env bash
+# npdev — NextPay Dev VPS CLI
+# Manages SSH sessions on shared dev VPS instances.
+
+set -euo pipefail
+
+NPDEV_VERSION="0.1.0"
+CONFIG_FILE="$HOME/.npdev/config"
+
+# ─── Helpers ──────────────────────────────────────────────────────────────────
+
+die() { printf '\033[1;31mError: %s\033[0m\n' "$*" >&2; exit 1; }
+
+validate_session_name() {
+  [[ "$1" =~ ^[a-zA-Z0-9_-]+$ ]] || die "Session name must contain only letters, numbers, hyphens, and underscores."
+}
+
+# ─── Config ───────────────────────────────────────────────────────────────────
+
+load_config() {
+  if [[ ! -f "$CONFIG_FILE" ]]; then
+    die "npdev not configured. Run: bash /path/to/nextpay-dev-vps/client/setup.sh"
+  fi
+  # shellcheck source=/dev/null
+  source "$CONFIG_FILE"
+  [[ -n "${REPO_DIR:-}" ]] || die "REPO_DIR not set in $CONFIG_FILE"
+  MACHINES_FILE="$REPO_DIR/machines.yaml"
+  [[ -f "$MACHINES_FILE" ]] || die "machines.yaml not found at $MACHINES_FILE"
+}
+
+# ─── Machine Selection ────────────────────────────────────────────────────────
+
+# Parse machines.yaml with awk (flat structure, no YAML library needed)
+get_machine_count() {
+  awk '/^  - name:/ { count++ } END { print count+0 }' "$MACHINES_FILE"
+}
+
+get_machine_field() {
+  local machine_name="$1" field="$2"
+  awk -v name="$machine_name" -v field="$field" '
+    /^  - name:/ { current = $3 }
+    current == name && $1 == (field ":") { print $2 }
+  ' "$MACHINES_FILE"
+}
+
+get_machine_names() {
+  awk '/^  - name:/ { print $3 }' "$MACHINES_FILE"
+}
+
+select_machine() {
+  local target="${NPDEV_MACHINE:-}"
+  local count
+  count=$(get_machine_count)
+
+  if [[ $count -eq 0 ]]; then
+    die "No machines defined in $MACHINES_FILE"
+  fi
+
+  # Explicit --machine flag takes priority
+  if [[ -n "$target" ]]; then
+    local host user
+    host=$(get_machine_field "$target" "host")
+    user=$(get_machine_field "$target" "user")
+    [[ -n "$host" ]] || die "Machine '$target' not found in $MACHINES_FILE"
+    MACHINE_NAME="$target"
+    MACHINE_HOST="$host"
+    MACHINE_USER="$user"
+    return
+  fi
+
+  # Single machine = auto-select
+  if [[ $count -eq 1 ]]; then
+    MACHINE_NAME=$(get_machine_names | head -1)
+    MACHINE_HOST=$(get_machine_field "$MACHINE_NAME" "host")
+    MACHINE_USER=$(get_machine_field "$MACHINE_NAME" "user")
+    return
+  fi
+
+  # Multiple machines = interactive prompt
+  echo "Available machines:" >&2
+  local i=1
+  local names=()
+  while IFS= read -r name; do
+    local desc
+    desc=$(awk -v n="$name" '
+      /^  - name:/ { current = $3 }
+      current == n && /description:/ { sub(/^[[:space:]]*description:[[:space:]]*"?/, ""); sub(/"$/, ""); print }
+    ' "$MACHINES_FILE")
+    printf "  %d) %s — %s\n" "$i" "$name" "$desc" >&2
+    names+=("$name")
+    ((i++))
+  done < <(get_machine_names)
+
+  printf "Select machine [1-%d]: " "${#names[@]}" >&2
+  read -r choice
+  [[ "$choice" =~ ^[0-9]+$ ]] || die "Invalid selection"
+  ((choice >= 1 && choice <= ${#names[@]})) || die "Selection out of range"
+
+  MACHINE_NAME="${names[$((choice - 1))]}"
+  MACHINE_HOST=$(get_machine_field "$MACHINE_NAME" "host")
+  MACHINE_USER=$(get_machine_field "$MACHINE_NAME" "user")
+}
+
+ssh_target() {
+  echo "$MACHINE_USER@$MACHINE_HOST"
+}
+
+# ─── Commands ─────────────────────────────────────────────────────────────────
+
+cmd_start() {
+  local name="$1"; shift
+  local desc="${*:-}"
+  validate_session_name "$name"
+  select_machine
+  if [[ -n "$desc" ]]; then
+    ssh -t "$(ssh_target)" "bash ~/.vps/session.sh start '$name' 'shell' '$desc'"
+  else
+    ssh -t "$(ssh_target)" "bash ~/.vps/session.sh start '$name' 'shell'"
+  fi
+}
+
+cmd_list() {
+  select_machine
+  ssh "$(ssh_target)" "bash ~/.vps/session.sh list"
+}
+
+cmd_end() {
+  local name="$1"
+  validate_session_name "$name"
+  select_machine
+  ssh -t "$(ssh_target)" "bash ~/.vps/session.sh end '$name'"
+}
+
+cmd_shell() {
+  select_machine
+  ssh -t "$(ssh_target)" "exec \$SHELL -l"
+}
+
+cmd_usage() {
+  cat <<'USAGE'
+npdev — NextPay Dev VPS CLI
+
+Usage:
+  npdev                           Quick shell (no tmux session)
+  npdev <session-name> [desc]     Create or attach to named tmux session
+  npdev list                      List all sessions
+  npdev end <session-name>        End a session
+  npdev --machine <name> ...      Select VPS when multiple configured
+  npdev --version                 Show version
+  npdev --help                    Show this help
+
+Pair programming:
+  Two people running the same session name share the terminal.
+
+Inside a session:
+  Ctrl+B, D                       Detach (session stays alive)
+USAGE
+}
+
+# ─── Main ─────────────────────────────────────────────────────────────────────
+
+# Parse global flags
+NPDEV_MACHINE=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --machine)
+      shift; NPDEV_MACHINE="${1:-}"; [[ -n "$NPDEV_MACHINE" ]] || die "--machine requires a name"
+      shift ;;
+    --version|-v)
+      echo "npdev $NPDEV_VERSION"; exit 0 ;;
+    --help|-h)
+      cmd_usage; exit 0 ;;
+    *)
+      break ;;
+  esac
+done
+
+load_config
+
+# Dispatch
+case "${1:-}" in
+  "")
+    cmd_shell ;;
+  list)
+    cmd_list ;;
+  end)
+    shift; [[ $# -lt 1 ]] && die "Usage: npdev end <session-name>"
+    cmd_end "$1" ;;
+  --help|-h)
+    cmd_usage ;;
+  *)
+    cmd_start "$@" ;;
+esac

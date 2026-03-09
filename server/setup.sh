@@ -1,18 +1,12 @@
 #!/usr/bin/env bash
-# dev-vps: Shared VPS Setup Script
-# Run this once with sudo on a fresh Ubuntu VPS to set up a shared dev environment.
+# nextpay-dev-vps: Server Provisioning Script
+# Idempotent — safe to re-run on an already-configured VPS.
 #
-# Usage:
-#   curl -fsSL https://raw.githubusercontent.com/kapitolph/dev-vps/main/VPS_SETUP.sh | sudo bash
-#   # or
-#   sudo bash VPS_SETUP.sh
+# Usage (from repo checkout):
+#   sudo bash server/setup.sh
 #
-# What it does:
-#   1. Creates a shared 'dev' user for pair programming via tmux
-#   2. Installs: Bun, Volta, Node.js, Claude Code, Codex CLI
-#   3. Authenticates with GitHub (interactive)
-#   4. Clones the project repo into ~/nextpay
-#   5. Sets up tmux-based persistent session management
+# Usage (curl-pipe, standalone):
+#   curl -fsSL https://raw.githubusercontent.com/kapitolph/nextpay-dev-vps/main/server/setup.sh | sudo bash
 
 set -euo pipefail
 
@@ -22,6 +16,17 @@ SHARED_GROUP="developers"
 REPO_URL="https://github.com/kapitolph/nextpay-v3.git"
 REPO_DIR="/home/$SHARED_USER/nextpay"
 VPS_DIR="/home/$SHARED_USER/.vps"
+
+# Detect whether we're running from a repo checkout or curl-pipe
+SCRIPT_DIR=""
+if [[ -f "${BASH_SOURCE[0]:-}" ]]; then
+  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  # Verify it looks like a repo checkout (parent has machines.yaml)
+  if [[ ! -f "$SCRIPT_DIR/../machines.yaml" ]]; then
+    SCRIPT_DIR=""
+  fi
+fi
+REPO_ROOT="${SCRIPT_DIR:+$(dirname "$SCRIPT_DIR")}"
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 info()  { printf '\n\033[1;34m▸ %s\033[0m\n' "$*"; }
@@ -35,6 +40,19 @@ need_root() {
 
 run_as_dev() {
   sudo -u "$SHARED_USER" -i bash -c "$1"
+}
+
+# Copy a file from the repo checkout, or fall back to writing inline content
+# Usage: install_file <source_relative_path> <dest_path> <fallback_heredoc_function>
+install_file() {
+  local src_rel="$1" dest="$2" fallback_fn="$3"
+  if [[ -n "$REPO_ROOT" ]] && [[ -f "$REPO_ROOT/$src_rel" ]]; then
+    cp "$REPO_ROOT/$src_rel" "$dest"
+    ok "Installed $dest (from repo)"
+  else
+    "$fallback_fn" > "$dest"
+    ok "Installed $dest (inline fallback)"
+  fi
 }
 
 # ─── Step 0: Preflight ───────────────────────────────────────────────────────
@@ -82,11 +100,27 @@ ok "SSH directory ready"
 # ─── Step 2: Collect SSH public keys ─────────────────────────────────────────
 info "SSH public key setup"
 
-# Collect keys from existing users on the system
-EXISTING_KEYS=$(cat "/home/$SHARED_USER/.ssh/authorized_keys" 2>/dev/null | wc -l)
+EXISTING_KEYS=$(wc -l < "/home/$SHARED_USER/.ssh/authorized_keys" 2>/dev/null || echo 0)
 echo "  Currently $EXISTING_KEYS key(s) in authorized_keys."
 
-# Check if there are other users with SSH keys we should import
+# Import keys from keys/*.pub in repo checkout
+if [[ -n "$REPO_ROOT" ]] && [[ -d "$REPO_ROOT/keys" ]]; then
+  for pubkey_file in "$REPO_ROOT"/keys/*.pub; do
+    [[ -f "$pubkey_file" ]] || continue
+    key_name="$(basename "$pubkey_file" .pub)"
+    while IFS= read -r key; do
+      [[ -z "$key" || "$key" == \#* ]] && continue
+      if ! grep -qF "$key" "/home/$SHARED_USER/.ssh/authorized_keys" 2>/dev/null; then
+        echo "$key" >> "/home/$SHARED_USER/.ssh/authorized_keys"
+        ok "Added key from keys/$key_name.pub"
+      else
+        ok "Key from '$key_name' already present"
+      fi
+    done < "$pubkey_file"
+  done
+fi
+
+# Fallback: scan other users' home directories (for curl-pipe mode)
 for home_dir in /home/*/; do
   user=$(basename "$home_dir")
   [[ "$user" == "$SHARED_USER" ]] && continue
@@ -187,252 +221,52 @@ info "Installing project dependencies..."
 run_as_dev "cd $REPO_DIR && source ~/.bashrc && bun install" || warn "bun install had issues (may need manual intervention)"
 ok "Dependencies installed"
 
-# ─── Step 10: Set up tmux session manager ────────────────────────────────────
+# ─── Step 10: Set up tmux session manager ─────────────────────────────────────
 info "Setting up tmux session manager..."
 
 mkdir -p "$VPS_DIR"
 
-cat > "$VPS_DIR/tmux.conf" << 'TMUX_CONF'
+# Install tmux.conf
+fallback_tmux_conf() {
+  cat << 'TMUX_CONF'
 # Shared VPS session persistence layer
 source-file -q ~/.tmux.conf
-
-# Hide status bar -- tmux is invisible, just a persistence layer
 set -g status off
-
-# Detach when session is destroyed (don't switch to another session)
 set -g detach-on-destroy on
-
-# Ensure extended keys pass through (Shift+Enter etc.)
 set -g extended-keys always
 set -gs extended-keys-format csi-u
 TMUX_CONF
-
-cat > "$VPS_DIR/session.sh" << 'SESSION_SH'
-#!/usr/bin/env bash
-# VPS Session Manager -- manages tmux-backed persistent sessions for pair programming
-# All developers share the same tmux sessions via the shared 'dev' user.
-# Usage: session.sh <command> [args...]
-# Commands: start, end, list, describe, reconcile, registry
-
-set -euo pipefail
-
-HOME_DIR="$HOME"
-REPO_DIR="$HOME/nextpay"
-REGISTRY="$HOME/.vps/sessions.yaml"
-TMUX_CONF="$HOME/.vps/tmux.conf"
-PATH="$HOME/.local/bin:$HOME/.bun/bin:$HOME/.volta/bin:$PATH"
-
-# Ensure registry exists
-if [[ ! -f "$REGISTRY" ]]; then
-  mkdir -p "$(dirname "$REGISTRY")"
-  printf '# VPS session registry -- managed by .vps/session.sh\nsessions: []\n' > "$REGISTRY"
-fi
-
-timestamp() {
-  date -u +"%Y-%m-%dT%H:%M:%SZ"
 }
+install_file "server/tmux.conf" "$VPS_DIR/tmux.conf" fallback_tmux_conf
 
-tmux_running() {
-  tmux -f "$TMUX_CONF" has-session -t "$1" 2>/dev/null
+# Install session.sh
+fallback_session_sh() {
+  # In curl-pipe mode, fetch from GitHub
+  curl -fsSL "https://raw.githubusercontent.com/kapitolph/nextpay-dev-vps/main/server/session.sh"
 }
-
-registry_add() {
-  local name="$1" type="$2" desc="$3" ts
-  ts="$(timestamp)"
-  sed -i 's/^sessions: \[\]$/sessions:/' "$REGISTRY"
-  cat >> "$REGISTRY" <<EOF
-  - name: $name
-    type: $type
-    description: "$desc"
-    status: active
-    created_at: "$ts"
-    ended_at: null
-EOF
-}
-
-registry_end() {
-  local name="$1" ts
-  ts="$(timestamp)"
-  awk -v name="$name" -v ts="$ts" '
-    BEGIN { last_line = 0 }
-    /^  - name: / { current_name = $3 }
-    /status: active/ && current_name == name { last_line = NR }
-    { lines[NR] = $0 }
-    END {
-      for (i = 1; i <= NR; i++) {
-        if (i == last_line) {
-          sub(/status: active/, "status: ended", lines[i])
-          print lines[i]
-          getline_next = i + 1
-          if (lines[getline_next] ~ /ended_at: null/) {
-            lines[getline_next] = "    ended_at: \"" ts "\""
-          }
-        } else {
-          print lines[i]
-        }
-      }
-    }
-  ' "$REGISTRY" > "${REGISTRY}.tmp" && mv "${REGISTRY}.tmp" "$REGISTRY"
-}
-
-registry_describe() {
-  local name="$1" desc="$2"
-  awk -v name="$name" -v desc="$desc" '
-    /^  - name: / { current_name = $3; current_active = 0 }
-    current_name == name && /status: active/ { current_active = 1 }
-    current_name == name && current_active && /description:/ { target = NR }
-    { lines[NR] = $0 }
-    END {
-      for (i = 1; i <= NR; i++) {
-        if (i == target) {
-          print "    description: \"" desc "\""
-        } else {
-          print lines[i]
-        }
-      }
-    }
-  ' "$REGISTRY" > "${REGISTRY}.tmp" && mv "${REGISTRY}.tmp" "$REGISTRY"
-}
-
-has_active_entry() {
-  local name="$1"
-  grep -A3 "name: $name$" "$REGISTRY" | grep -q "status: active"
-}
-
-cmd_start() {
-  local name="$1" type="${2:-shell}" desc="${3:-}"
-
-  # If tmux session already exists, just attach (pair programming!)
-  if tmux_running "$name"; then
-    exec tmux -f "$TMUX_CONF" attach-session -t "$name"
-  fi
-
-  # Prompt for description if not provided and interactive
-  if [[ -z "$desc" ]] && [[ -t 0 ]]; then
-    printf "Session description for '%s': " "$name"
-    read -r desc
-  fi
-  [[ -z "$desc" ]] && desc="(no description)"
-
-  # Reconcile stale sessions first
-  cmd_reconcile quiet
-
-  # Add registry entry
-  registry_add "$name" "$type" "$desc"
-
-  # Build the command for the tmux session
-  local cmd
-  case "$type" in
-    shell)
-      cmd="cd $REPO_DIR && exec \$SHELL -l"
-      ;;
-    claude)
-      cmd="cd $REPO_DIR && claude --dangerously-skip-permissions"
-      ;;
-    codex)
-      cmd="cd $REPO_DIR && codex --dangerously-bypass-approvals-and-sandbox"
-      ;;
-    *)
-      echo "Unknown type: $type" >&2
-      exit 1
-      ;;
-  esac
-
-  # Create and attach
-  tmux -f "$TMUX_CONF" new-session -d -s "$name" "$cmd"
-  exec tmux -f "$TMUX_CONF" attach-session -t "$name"
-}
-
-cmd_end() {
-  local name="$1"
-  if tmux_running "$name"; then
-    tmux -f "$TMUX_CONF" kill-session -t "$name"
-  fi
-  if has_active_entry "$name"; then
-    registry_end "$name"
-    echo "Session '$name' ended."
-  else
-    echo "No active registry entry for '$name'."
-  fi
-}
-
-cmd_list() {
-  echo "=== Active tmux sessions ==="
-  tmux -f "$TMUX_CONF" ls 2>/dev/null || echo "(none)"
-  echo ""
-  echo "=== Session registry ==="
-  awk '
-    /^  - name:/ { printf "\n" }
-    /name:/ && !/^#/ && !/sessions:/ { printf "  %-20s", $3 }
-    /type:/ { printf "%-10s", $2 }
-    /description:/ {
-      sub(/^[[:space:]]*description: "?/, ""); sub(/"$/, "")
-      printf "%-40s", $0
-    }
-    /status:/ { printf "%-10s", $2 }
-    /created_at:/ { sub(/^[[:space:]]*created_at: "?/, ""); sub(/"$/, ""); printf "%s", $0 }
-    /ended_at:/ && !/null/ { sub(/^[[:space:]]*ended_at: "?/, ""); sub(/"$/, ""); printf " -> %s", $0 }
-    /ended_at: null/ { }
-  ' "$REGISTRY"
-  echo ""
-}
-
-cmd_reconcile() {
-  local quiet="${1:-}"
-  local changed=0
-  local active_names
-  active_names=$(awk '
-    /^  - name:/ { name = $3 }
-    /status: active/ { print name }
-  ' "$REGISTRY" | sort -u)
-
-  local sname
-  for sname in $active_names; do
-    if ! tmux_running "$sname"; then
-      registry_end "$sname"
-      changed=1
-      [[ "$quiet" != "quiet" ]] && echo "Reconciled stale session: $sname" || true
-    fi
-  done
-
-  if [[ "$quiet" != "quiet" ]] && [[ $changed -eq 0 ]]; then
-    echo "All sessions in sync."
-  fi
-  return 0
-}
-
-cmd_describe() {
-  local name="$1" desc="$2"
-  if has_active_entry "$name"; then
-    registry_describe "$name" "$desc"
-    echo "Updated description for '$name'."
-  else
-    echo "No active session '$name' found."
-  fi
-}
-
-cmd_registry() {
-  cat "$REGISTRY"
-}
-
-# Main dispatch
-case "${1:-}" in
-  start)    shift; [[ $# -lt 1 ]] && { echo "Usage: session.sh start <name> <type> [description]" >&2; exit 1; }; cmd_start "$@" ;;
-  end)      shift; [[ $# -lt 1 ]] && { echo "Usage: session.sh end <name>" >&2; exit 1; }; cmd_end "$1" ;;
-  list)     cmd_list ;;
-  describe) shift; [[ $# -lt 2 ]] && { echo "Usage: session.sh describe <name> <desc>" >&2; exit 1; }; cmd_describe "$1" "$2" ;;
-  reconcile) cmd_reconcile ;;
-  registry) cmd_registry ;;
-  *)        echo "Usage: session.sh {start|end|list|describe|reconcile|registry} [args...]" >&2; exit 1 ;;
-esac
-SESSION_SH
+install_file "server/session.sh" "$VPS_DIR/session.sh" fallback_session_sh
 
 chmod +x "$VPS_DIR/session.sh"
 chown -R "$SHARED_USER:$SHARED_GROUP" "$VPS_DIR"
 
 ok "Session manager installed at $VPS_DIR"
 
-# ─── Step 11: Configure dev user's shell PATH ────────────────────────────────
+# ─── Step 11: Install TPM + tmux plugins ─────────────────────────────────────
+info "Setting up tmux persistence (TPM + resurrect + continuum)..."
+
+TPM_DIR="/home/$SHARED_USER/.tmux/plugins/tpm"
+if [[ -d "$TPM_DIR/.git" ]]; then
+  ok "TPM already installed"
+else
+  run_as_dev 'git clone https://github.com/tmux-plugins/tpm ~/.tmux/plugins/tpm'
+  ok "TPM installed"
+fi
+
+# Install plugins non-interactively
+run_as_dev '~/.tmux/plugins/tpm/bin/install_plugins' || warn "TPM plugin install had issues (may need tmux running)"
+ok "Tmux plugins installed"
+
+# ─── Step 12: Configure dev user's shell PATH ────────────────────────────────
 info "Configuring shell environment..."
 
 BASHRC="/home/$SHARED_USER/.bashrc"
@@ -462,11 +296,10 @@ echo ""
 echo "  Shared user:    $SHARED_USER"
 echo "  Repository:     $REPO_DIR"
 echo "  Session script: $VPS_DIR/session.sh"
+echo "  Tmux config:    $VPS_DIR/tmux.conf"
 echo ""
 echo "  Next steps for each developer:"
-echo "  1. Add their SSH public key to /home/$SHARED_USER/.ssh/authorized_keys"
-echo "  2. Run the client-prompt.md instructions to set up local aliases"
-echo ""
-echo "  To add a new developer's key:"
-echo "    echo 'ssh-ed25519 AAAA...' >> /home/$SHARED_USER/.ssh/authorized_keys"
+echo "  1. Commit their public key to keys/<name>.pub in the repo"
+echo "  2. Re-run this script to import new keys (or manually add to authorized_keys)"
+echo "  3. Run client/setup.sh on their local machine"
 echo ""

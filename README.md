@@ -1,64 +1,92 @@
-# dev-vps
+# nextpay-dev-vps
 
-Shared VPS setup for pair programming via tmux. Two files:
+Shared VPS setup for pair programming via tmux. One repo provisions servers and configures developer clients.
 
-## Files
+## Quick Start
 
-### `VPS_SETUP.sh`
-
-**Run once on the server** (requires `sudo`). Sets up:
-
-- A shared `dev` user that all developers SSH into
-- Bun, Volta, Node.js, Claude Code, Codex CLI
-- GitHub CLI + authentication
-- Clones the project repo to `~/nextpay`
-- tmux-based session manager for persistent, shareable sessions
+### Server (run once per VPS)
 
 ```bash
-# On the VPS (as any sudoer):
-sudo bash VPS_SETUP.sh
+# From repo checkout:
+sudo bash server/setup.sh
+
+# Or curl-pipe (standalone):
+curl -fsSL https://raw.githubusercontent.com/kapitolph/nextpay-dev-vps/main/server/setup.sh | sudo bash
 ```
 
-Imports SSH public keys from all existing users on the system into the shared `dev` user's `authorized_keys`.
+### Client (each developer)
 
-### `client-prompt.md`
+Paste `client/client-prompt.md` into your coding agent, or manually:
 
-**For each developer.** Paste the contents into a coding agent (Claude Code, Codex, etc.) and it walks you through:
+```bash
+git clone https://github.com/kapitolph/nextpay-dev-vps.git
+cd nextpay-dev-vps
+bash client/setup.sh
+```
 
-1. Generating an SSH key
-2. Configuring SSH (`~/.ssh/config`)
-3. Setting up shell aliases (`npvps`, `npvpscc`, `npvpscx`)
-4. Testing the connection
-5. Setting per-repo git identity
+## Architecture
 
-## How Pair Programming Works
+```
+nextpay-dev-vps/
+├── machines.yaml              # VPS registry (name, host, user)
+├── keys/                      # One .pub file per engineer
+├── server/
+│   ├── setup.sh               # Idempotent VPS provisioner
+│   ├── session.sh             # Tmux session manager
+│   └── tmux.conf              # Tmux config with persistence
+└── client/
+    ├── npdev                  # CLI script
+    ├── setup.sh               # Client installer
+    └── client-prompt.md       # Agent-readable onboarding prompt
+```
 
-All developers SSH as the shared `dev` user. The tmux session manager lets multiple people attach to the same named session:
+### How Pair Programming Works
+
+All developers SSH as a shared user. The tmux session manager lets multiple people attach to the same named session:
 
 ```bash
 # Developer A:
-npvpscx feature-auth       # Creates a Codex session called "feature-auth"
+npdev feature-auth             # Creates a tmux session called "feature-auth"
 
 # Developer B:
-npvpscx feature-auth       # Joins the SAME terminal — live pair programming
+npdev feature-auth             # Joins the SAME terminal — live pair programming
 ```
 
 Detach without killing the session: `Ctrl+B, D`
 
-## Adding a New Developer
+## Adding a Machine
 
-1. Get their SSH public key (they generate it via `client-prompt.md`)
-2. On the VPS: `echo 'ssh-ed25519 AAAA...' >> /home/dev/.ssh/authorized_keys`
-3. They finish the client-prompt setup and connect
+Add an entry to `machines.yaml`:
 
-## Session Commands
+```yaml
+machines:
+  - name: np-dev-2
+    host: 1.2.3.4
+    user: dev
+    description: "Secondary dev VPS"
+```
+
+Then provision: `sudo bash server/setup.sh` on the new VPS.
+
+## Adding a Developer
+
+1. Developer runs through `client/client-prompt.md` (or manual setup)
+2. They commit their public key to `keys/<name>.pub`
+3. Admin re-runs `sudo bash server/setup.sh` on each VPS to import the key
+   (or manually: `echo '<key>' >> /home/dev/.ssh/authorized_keys`)
+
+## CLI Reference
 
 | Command | Description |
 |---|---|
-| `npvps` | Quick shell (no session) |
-| `npvps my-session` | Create/attach to named session |
-| `npvpscc my-session` | Session with Claude Code |
-| `npvpscx my-session` | Session with Codex |
-| `npvps list` | List all sessions |
-| `npvps end my-session` | End a session |
-| `npvps --help` | Full usage |
+| `npdev` | Quick shell (no tmux session) |
+| `npdev <name> [desc]` | Create or attach to named session |
+| `npdev list` | List all sessions |
+| `npdev end <name>` | End a session |
+| `npdev --machine <name>` | Select VPS (when multiple configured) |
+| `npdev --version` | Show version |
+| `npdev --help` | Full usage |
+
+## Session Commands (on server)
+
+The session manager at `~/.vps/session.sh` supports: `start`, `end`, `list`, `describe`, `reconcile`, `registry`.
