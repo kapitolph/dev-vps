@@ -247,6 +247,22 @@ fallback_session_sh() {
 install_file "server/session.sh" "$VPS_DIR/session.sh" fallback_session_sh
 
 chmod +x "$VPS_DIR/session.sh"
+
+# Install git credential helper (uses per-developer GH_TOKEN from env)
+cat > "$VPS_DIR/git-credential-token" << 'CREDHELPER'
+#!/bin/bash
+# Git credential helper that uses GH_TOKEN from environment
+if [[ -n "${GH_TOKEN:-}" ]]; then
+  echo "protocol=https"
+  echo "host=github.com"
+  echo "username=x-access-token"
+  echo "password=${GH_TOKEN}"
+fi
+CREDHELPER
+chmod +x "$VPS_DIR/git-credential-token"
+run_as_dev "git config --global credential.helper '!bash ~/.vps/git-credential-token'"
+ok "Git credential helper installed"
+
 chown -R "$SHARED_USER:$SHARED_GROUP" "$VPS_DIR"
 
 ok "Session manager installed at $VPS_DIR"

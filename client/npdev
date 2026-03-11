@@ -239,6 +239,22 @@ chmod 600 ~/.vps/developers/${dev_name}.env"
 
   ok "VPS identity created at ~/.vps/developers/${dev_name}.env"
 
+  # Ensure git credential helper exists (uses GH_TOKEN from session env)
+  ssh "$target" 'if [[ ! -f ~/.vps/git-credential-token ]]; then
+    cat > ~/.vps/git-credential-token << '\''CREDHELPER'\''
+#!/bin/bash
+if [[ -n "${GH_TOKEN:-}" ]]; then
+  echo "protocol=https"
+  echo "host=github.com"
+  echo "username=x-access-token"
+  echo "password=${GH_TOKEN}"
+fi
+CREDHELPER
+    chmod +x ~/.vps/git-credential-token
+    git config --global credential.helper "!bash ~/.vps/git-credential-token"
+  fi'
+  ok "Git credential helper configured"
+
   # Verify
   ssh "$target" "source ~/.vps/developers/${dev_name}.env && echo \"  Git: \$GIT_AUTHOR_NAME <\$GIT_AUTHOR_EMAIL>\" && echo \"  GH:  token set (\${#GH_TOKEN} chars)\""
 
