@@ -193,18 +193,10 @@ else
   ok "GitHub CLI already installed"
 fi
 
-info "GitHub authentication (interactive)..."
-echo "  You'll authenticate as the shared 'dev' user."
-echo "  This token will be used by all developers for git operations."
-echo ""
-
-if run_as_dev 'gh auth status &>/dev/null'; then
-  ok "Already authenticated with GitHub"
-else
-  # Run gh auth login interactively — needs a real terminal
-  sudo -u "$SHARED_USER" -i gh auth login
-  ok "GitHub authenticated"
-fi
+info "GitHub authentication..."
+echo "  Per-developer tokens are used (via npdev setup + git credential helper)."
+echo "  Skipping shared gh auth login — each developer's GH_TOKEN is injected per session."
+ok "GitHub auth: per-developer tokens via ~/.vps/git-credential-token"
 
 # ─── Step 8: Clone repository ────────────────────────────────────────────────
 info "Cloning repository..."
