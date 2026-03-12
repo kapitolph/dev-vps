@@ -117,9 +117,19 @@ cmd_start() {
   [[ -d "$REPO_DIR" ]] && work_dir="$REPO_DIR"
 
   # Build env preamble (source developer identity if available)
+  # Uses a per-session gitconfig file so concurrent sessions don't overwrite each other
   local env_preamble=""
   if [[ -n "$dev_user" ]] && [[ -f "$DEVELOPERS_DIR/${dev_user}.env" ]]; then
-    env_preamble="source $DEVELOPERS_DIR/${dev_user}.env && git config --global user.name \"\$GIT_AUTHOR_NAME\" && git config --global user.email \"\$GIT_AUTHOR_EMAIL\" && "
+    local session_gitconfig="$HOME/.vps/developers/${dev_user}.gitconfig"
+    printf '[user]\n\tname = %s\n\temail = %s\n' \
+      "$(grep GIT_AUTHOR_NAME "$DEVELOPERS_DIR/${dev_user}.env" | cut -d'"' -f2)" \
+      "$(grep GIT_AUTHOR_EMAIL "$DEVELOPERS_DIR/${dev_user}.env" | cut -d'"' -f2)" \
+      > "$session_gitconfig"
+    # Include shared gitconfig (credential helper etc) if it exists
+    if [[ -f "$HOME/.gitconfig" ]]; then
+      printf '[include]\n\tpath = %s\n' "$HOME/.gitconfig" >> "$session_gitconfig"
+    fi
+    env_preamble="source $DEVELOPERS_DIR/${dev_user}.env && export GIT_CONFIG_GLOBAL=$session_gitconfig && "
   fi
 
   # Build the command for the tmux session
