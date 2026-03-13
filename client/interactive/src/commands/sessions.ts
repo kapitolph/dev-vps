@@ -92,8 +92,7 @@ export async function cmdSessions(machine: Machine, npdevUser: string): Promise<
         message: "Which session?",
         options: sessions.map((s) => ({
           value: s.name,
-          label: s.name,
-          hint: `${s.owner} · ${s.type} · ${relativeTime(s.last_activity)}`,
+          label: `${s.name} ${chalk.dim("·")} ${s.owner} ${chalk.dim("·")} ${relativeTime(s.last_activity)}`,
         })),
       });
       if (p.isCancel(choice)) continue;
@@ -156,11 +155,16 @@ export async function cmdSessions(machine: Machine, npdevUser: string): Promise<
 
       const selected = await p.multiselect({
         message: "Select sessions to end (space to toggle)",
-        options: sorted.map((s) => ({
-          value: s.name,
-          label: s.name,
-          hint: `${s.owner} · last active ${relativeTime(s.last_activity)}`,
-        })),
+        options: sorted.map((s) => {
+          const age = activityAge(s.last_activity);
+          const stale = age > 3 * 86400;
+          const timeStr = relativeTime(s.last_activity);
+          const activeLabel = stale ? chalk.yellow(timeStr) : chalk.dim(timeStr);
+          return {
+            value: s.name,
+            label: `${s.name} ${chalk.dim("·")} ${s.owner} ${chalk.dim("·")} ${activeLabel}`,
+          };
+        }),
         required: false,
       });
 
