@@ -13,7 +13,6 @@ import { RepoList } from "./components/RepoList";
 import { SessionList } from "./components/SessionList";
 import { SetupPage } from "./components/SetupPage";
 import { SkeletonLoader } from "./components/SkeletonLoader";
-import { Spinner } from "./components/Spinner";
 import { StaleNudge } from "./components/StaleNudge";
 import { StatusLine } from "./components/StatusLine";
 import { TabBar } from "./components/TabBar";
@@ -75,6 +74,7 @@ export function App({ machine, npdevUser, version, isOnVPS, onAction }: Props) {
   const [teamScrollOffset, setTeamScrollOffset] = useState(0);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [showStaleNudge, setShowStaleNudge] = useState(true);
+  const [lastLeftColumn, setLastLeftColumn] = useState<"sessions" | "team">("sessions");
 
   // For narrow layout, focusColumn doubles as the active tab
   const narrowTab = focusColumn;
@@ -294,11 +294,26 @@ export function App({ machine, npdevUser, version, isOnVPS, onAction }: Props) {
 
     // Navigation in column area
     if (cursorArea === "sessions") {
+      // Up/Down navigation with cross-section logic for normal layout
       if (key.downArrow || input === "j") {
+        // In normal layout, down at bottom of sessions → team
+        if (layout === "normal" && focusColumn === "sessions" && sessionCursor >= mine.length - 1 && hasTeam) {
+          setFocusColumn("team");
+          setTeamCursor(0);
+          setTeamScrollOffset(0);
+          return;
+        }
         moveCursor(1);
         return;
       }
       if (key.upArrow || (input === "k" && focusColumn !== "sessions")) {
+        // In normal layout, up at top of team → sessions
+        if (layout === "normal" && focusColumn === "team" && teamCursor === 0 && mine.length > 0) {
+          setFocusColumn("sessions");
+          setSessionCursor(mine.length - 1);
+          setSessionScrollOffset(Math.max(0, mine.length - maxVisible));
+          return;
+        }
         // In repos/team columns, k is vim up (no kill conflict)
         if (currentCursor === 0) {
           setCursorArea("actions");
@@ -329,7 +344,17 @@ export function App({ machine, npdevUser, version, isOnVPS, onAction }: Props) {
           } else {
             setFocusColumn(availableColumns[(idx - 1 + availableColumns.length) % availableColumns.length]);
           }
+        } else if (layout === "normal") {
+          // Normal layout: left side = sessions/team, right side = repos
+          // Left/Right toggles between left side and repos
+          if (key.rightArrow && (focusColumn === "sessions" || focusColumn === "team") && hasRepos) {
+            setLastLeftColumn(focusColumn);
+            setFocusColumn("repos");
+          } else if (key.leftArrow && focusColumn === "repos") {
+            setFocusColumn(lastLeftColumn);
+          }
         } else {
+          // Wide layout: all columns side by side
           const idx = availableColumns.indexOf(focusColumn);
           if (key.rightArrow && idx < availableColumns.length - 1) {
             setFocusColumn(availableColumns[idx + 1]);

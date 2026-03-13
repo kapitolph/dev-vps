@@ -61,8 +61,6 @@ export function SessionRow({ session, isSelected, isMarked, showOwner, ownerLabe
           <Text color={ownerIsAttached ? theme.green : theme.overlay1}> {ownerLabel}</Text>
         )}
         <Spacer />
-        <Text color={theme.overlay0}> {repoName || "No project"}</Text>
-        <Text> </Text>
         <Text color={isStale ? theme.yellow : theme.overlay1}>
           {relativeTime(session.last_activity)}
         </Text>
@@ -80,14 +78,13 @@ export function SessionRow({ session, isSelected, isMarked, showOwner, ownerLabe
           );
         })()}
       </Box>
-      {/* Line 2: description */}
-      {hasDescription && (
-        <Box paddingLeft={4}>
-          <Text color={theme.overlay0} wrap="truncate">
-            {session.description.slice(0, Math.max(20, width - 8))}
-          </Text>
-        </Box>
-      )}
+      {/* Line 2: repo + description */}
+      <Box paddingLeft={4}>
+        <Text color={theme.overlay0} wrap="truncate">
+          {repoName || "No project"}
+          {hasDescription ? ` ${icons.bullet} ${session.description.slice(0, Math.max(20, width - 8 - (repoName || "No project").length))}` : ""}
+        </Text>
+      </Box>
     </Box>
   );
 }
