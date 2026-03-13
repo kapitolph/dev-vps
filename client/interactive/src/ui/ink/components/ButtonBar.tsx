@@ -18,32 +18,25 @@ interface Props {
 export function ButtonBar({ buttons, focusedIndex, isFocusZone }: Props) {
   const theme = useTheme();
 
-  const borderColor = isFocusZone ? theme.panelBorderFocused : theme.panelBorder;
-
   return (
-    <Box
-      paddingLeft={1}
-      gap={2}
-      flexWrap="wrap"
-      borderStyle="single"
-      borderLeft
-      borderTop={false}
-      borderBottom={false}
-      borderRight={false}
-      borderColor={borderColor}
-    >
+    <Box flexDirection="column" paddingX={1} gap={0}>
       {buttons.map((btn, i) => {
         const isFocused = i === focusedIndex && isFocusZone;
 
         return (
-          <Box key={btn.key}>
-            <Text color={theme.overlay0}>{btn.key}</Text>
+          <Box
+            key={btn.key}
+            borderStyle="round"
+            borderColor={isFocused ? theme.accent : theme.surface1}
+            paddingX={1}
+          >
+            <Text color={isFocused ? theme.accent : theme.overlay0}>{btn.key}</Text>
             <Text> </Text>
             <Text
               color={isFocused ? theme.accent : theme.subtext0}
               bold={isFocused}
             >
-              {isFocused ? `▸ ${toBold(btn.label.toUpperCase())}` : toBold(btn.label.toUpperCase())}
+              {toBold(btn.label.toUpperCase())}
             </Text>
           </Box>
         );

@@ -11,37 +11,30 @@ interface Props {
   version: VersionInfo;
   cols: number;
   layout: Layout;
+  isOnVPS: boolean;
 }
 
-export function Header({ machineName, npdevUser, version, cols, layout }: Props) {
+export function Header({ machineName, npdevUser, version, cols, layout, isOnVPS }: Props) {
   const theme = useTheme();
 
   if (layout === "narrow") {
-    // Compact single-line header for narrow terminals
     return (
       <Box width={cols} backgroundColor={theme.surface0} paddingX={1}>
-        <Box gap={1}>
-          <Logo layout={layout} />
-          <Text bold color={theme.text}>npdev</Text>
-        </Box>
+        <Logo layout={layout} isOnVPS={isOnVPS} />
         <Spacer />
         <Box gap={1}>
           <Text color={theme.subtext0}>{npdevUser}</Text>
-          <Text backgroundColor={theme.contextBadge.color} color={theme.base} bold>
-            {" "}{theme.contextBadge.label}{" "}
-          </Text>
         </Box>
       </Box>
     );
   }
 
-  // Wide/normal: logo on top, info line below
   return (
-    <Box flexDirection="column">
+    <Box flexDirection="column" paddingBottom={1}>
       <Box paddingX={1} paddingTop={1}>
-        <Logo layout={layout} />
+        <Logo layout={layout} isOnVPS={isOnVPS} />
       </Box>
-      <Box paddingX={1} gap={1}>
+      <Box paddingX={1} gap={1} paddingTop={1}>
         <Text color={theme.subtext0}>npdev</Text>
         <Text color={theme.overlay0}>·</Text>
         <Text color={theme.subtext0}>{machineName}</Text>
@@ -54,9 +47,6 @@ export function Header({ machineName, npdevUser, version, cols, layout }: Props)
             {" ↑ "}
           </Text>
         )}
-        <Text backgroundColor={theme.contextBadge.color} color={theme.base} bold>
-          {" "}{theme.contextBadge.label}{" "}
-        </Text>
       </Box>
     </Box>
   );

@@ -4,6 +4,7 @@ import type { SessionData } from "../../../types";
 import type { Layout } from "../hooks/useTerminalSize";
 import { SessionRow } from "./SessionRow";
 import { useTheme } from "../context/ThemeContext";
+import { toBlockText } from "../theme";
 
 interface Props {
   sessions: SessionData[];
@@ -54,6 +55,9 @@ export function TeamSection({
   const aboveCount = scrollOffset;
   const belowCount = Math.max(0, rows.length - scrollOffset - maxVisible);
 
+  const headerText = `Team (${sessions.length})`;
+  const blockLines = layout !== "narrow" ? toBlockText(headerText) : null;
+
   return (
     <Box
       flexDirection="column"
@@ -65,10 +69,18 @@ export function TeamSection({
       borderBottom={false}
       borderRight={false}
       borderColor={focused ? theme.panelBorderFocused : theme.panelBorder}
+      paddingLeft={1}
     >
-      <Text color={focused ? theme.accent : theme.overlay1} bold={focused}>
-        {" "}Team ({sessions.length})
-      </Text>
+      {blockLines ? (
+        <Box flexDirection="column" paddingBottom={1}>
+          <Text color={focused ? theme.accent : theme.overlay1}>{blockLines[0]}</Text>
+          <Text color={focused ? theme.accent : theme.overlay1}>{blockLines[1]}</Text>
+        </Box>
+      ) : (
+        <Text color={focused ? theme.accent : theme.overlay1} bold={focused}>
+          Team ({sessions.length})
+        </Text>
+      )}
       {aboveCount > 0 && (
         <Text color={theme.overlay1}> ↑ {aboveCount} more</Text>
       )}

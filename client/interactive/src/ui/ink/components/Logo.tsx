@@ -1,6 +1,6 @@
 import React from "react";
-import { Text } from "ink";
-import { BRAND_BLUE } from "../theme";
+import { Box, Text } from "ink";
+import { BRAND_BLUE, VPS_GREEN } from "../theme";
 import type { Layout } from "../hooks/useTerminalSize";
 
 const LOGO_LINES = [
@@ -11,20 +11,41 @@ const LOGO_LINES = [
   "██║ ╚███║███████╗██╔╝ ██╗   ██║   ██║     ██║  ██║   ██║   ",
 ];
 
+const VPS_LINES = [
+  "██╗   ██╗██████╗ ███████╗",
+  "██║   ██║██╔══██╗██╔════╝",
+  "██║   ██║██████╔╝███████╗",
+  "╚██╗ ██╔╝██╔═══╝ ╚════██║",
+  " ╚████╔╝ ██║     ███████║",
+];
+
 interface Props {
   layout: Layout;
+  isOnVPS: boolean;
 }
 
-export function Logo({ layout }: Props) {
+export function Logo({ layout, isOnVPS }: Props) {
   if (layout === "narrow") {
     return (
-      <Text backgroundColor={BRAND_BLUE} color="#1e1e2e" bold>
-        {" ❯❯ nextpay "}
-      </Text>
+      <Box gap={1}>
+        <Text backgroundColor={BRAND_BLUE} color="#1e1e2e" bold>
+          {" ❯❯ nextpay "}
+        </Text>
+        {isOnVPS && (
+          <Text backgroundColor={VPS_GREEN} color="#1e1e2e" bold>
+            {" VPS "}
+          </Text>
+        )}
+      </Box>
     );
   }
 
   return (
-    <Text color={BRAND_BLUE}>{LOGO_LINES.join("\n")}</Text>
+    <Box gap={2}>
+      <Text color={BRAND_BLUE}>{LOGO_LINES.join("\n")}</Text>
+      {isOnVPS && (
+        <Text color={VPS_GREEN}>{VPS_LINES.join("\n")}</Text>
+      )}
+    </Box>
   );
 }

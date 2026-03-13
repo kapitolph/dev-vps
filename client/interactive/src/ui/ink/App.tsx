@@ -54,8 +54,8 @@ export function App({ machine, npdevUser, version, isOnVPS, onAction }: Props) {
   const currentList = activePanel === "mine" ? mine : team;
   const maxItems = currentList.length;
 
-  // Viewport windowing — account for header (7 lines for logo), action bar (1), status (1), padding
-  const maxVisible = Math.max(3, rows - 12);
+  // Viewport windowing — header ~9 lines, status 1, padding 2-3
+  const maxVisible = Math.max(3, rows - 14);
 
   // Move cursor and scroll offset together in one batch
   const moveCursor = useCallback(
@@ -196,15 +196,20 @@ export function App({ machine, npdevUser, version, isOnVPS, onAction }: Props) {
 
     // Navigation in actions row
     if (cursorArea === "actions") {
-      if (key.leftArrow) {
+      if (key.upArrow || input === "k") {
         setFocusedButton((f) => Math.max(0, f - 1));
         return;
       }
-      if (key.rightArrow) {
-        setFocusedButton((f) => Math.min(buttons.length - 1, f + 1));
+      if (key.downArrow || input === "j") {
+        if (focusedButton < buttons.length - 1) {
+          setFocusedButton((f) => f + 1);
+        } else if (maxItems > 0) {
+          setCursorArea("sessions");
+        }
         return;
       }
-      if (key.downArrow || input === "j") {
+      if (key.leftArrow || key.rightArrow) {
+        // In wide mode, arrows switch to session panels
         if (maxItems > 0) {
           setCursorArea("sessions");
         }
@@ -225,6 +230,7 @@ export function App({ machine, npdevUser, version, isOnVPS, onAction }: Props) {
       if (key.upArrow || input === "k") {
         if (cursor === 0) {
           setCursorArea("actions");
+          setFocusedButton(0);
         } else {
           moveCursor(-1);
         }
@@ -263,7 +269,7 @@ export function App({ machine, npdevUser, version, isOnVPS, onAction }: Props) {
     }
   });
 
-  const contentWidth = cols - 2;
+  const contentWidth = cols - 4; // account for padding
   const isEmpty = mine.length === 0 && team.length === 0;
 
   // Derive activeTab for TabBar
@@ -279,8 +285,9 @@ export function App({ machine, npdevUser, version, isOnVPS, onAction }: Props) {
           version={version}
           cols={cols}
           layout={layout}
+          isOnVPS={isOnVPS}
         />
-        <Box paddingX={1} paddingY={1}>
+        <Box paddingX={2} paddingY={1}>
           <Spinner label="Loading sessions..." />
         </Box>
       </Box>
@@ -291,13 +298,13 @@ export function App({ machine, npdevUser, version, isOnVPS, onAction }: Props) {
   const panelFocusedMine = cursorArea === "sessions" && activePanel === "mine";
   const panelFocusedTeam = cursorArea === "sessions" && activePanel === "team";
 
-  const sessionArea = isEmpty ? (
-    <Box flexGrow={1}>
+  const sessionPanels = isEmpty ? (
+    <Box flexGrow={1} paddingY={1}>
       <EmptyState />
     </Box>
   ) : layout === "wide" ? (
     // Wide: side by side
-    <Box flexDirection="row" gap={1} flexGrow={1}>
+    <Box flexDirection="row" gap={2} flexGrow={1}>
       {mine.length > 0 ? (
         <SessionList
           sessions={mine}
@@ -305,12 +312,12 @@ export function App({ machine, npdevUser, version, isOnVPS, onAction }: Props) {
           selectable={panelFocusedMine}
           focused={panelFocusedMine}
           layout={layout}
-          width={Math.floor(contentWidth / 2) - 1}
+          width={Math.floor(contentWidth / 2) - 2}
           scrollOffset={activePanel === "mine" ? scrollOffset : 0}
           maxVisible={maxVisible}
         />
       ) : (
-        <Box flexGrow={1}>
+        <Box flexGrow={1} paddingY={1}>
           <EmptyState />
         </Box>
       )}
@@ -321,7 +328,7 @@ export function App({ machine, npdevUser, version, isOnVPS, onAction }: Props) {
           selectable={panelFocusedTeam}
           focused={panelFocusedTeam}
           layout={layout}
-          width={Math.floor(contentWidth / 2) - 1}
+          width={Math.floor(contentWidth / 2) - 2}
           scrollOffset={activePanel === "team" ? scrollOffset : 0}
           maxVisible={maxVisible}
         />
@@ -371,22 +378,27 @@ export function App({ machine, npdevUser, version, isOnVPS, onAction }: Props) {
         version={version}
         cols={cols}
         layout={layout}
+        isOnVPS={isOnVPS}
       />
-      <ButtonBar
-        buttons={buttons}
-        focusedIndex={focusedButton}
-        isFocusZone={cursorArea === "actions"}
-      />
-      <Box flexDirection="column" flexGrow={1} paddingX={1}>
-        {sessionArea}
-        {state.mode === "new-session" && (
-          <TextInput
-            label="Session name:"
-            value={state.input}
-            error={state.error || undefined}
-            hint="Enter to confirm, Esc to cancel"
-          />
-        )}
+      <Box flexDirection="row" flexGrow={1} paddingX={1}>
+        <ButtonBar
+          buttons={buttons}
+          focusedIndex={focusedButton}
+          isFocusZone={cursorArea === "actions"}
+        />
+        <Box flexDirection="column" flexGrow={1} paddingLeft={1}>
+          {sessionPanels}
+          {state.mode === "new-session" && (
+            <Box paddingY={1}>
+              <TextInput
+                label="Session name:"
+                value={state.input}
+                error={state.error || undefined}
+                hint="Enter to confirm, Esc to cancel"
+              />
+            </Box>
+          )}
+        </Box>
       </Box>
       <StatusLine
         mode={state.mode}

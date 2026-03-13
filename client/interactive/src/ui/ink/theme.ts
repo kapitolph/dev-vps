@@ -1,4 +1,4 @@
-// Catppuccin Mocha palette + dual theme system for npdev TUI
+// Catppuccin Mocha palette for npdev TUI
 
 // Base Catppuccin Mocha colors (shared across themes)
 const palette = {
@@ -70,12 +70,10 @@ export interface Theme {
   panelBg: string;
   panelBorder: string;
   panelBorderFocused: string;
-  // Context badge
-  contextBadge: { label: string; color: string };
 }
 
-export function getTheme(context: "remote" | "local"): Theme {
-  const accent = context === "local" ? palette.teal : palette.mauve;
+export function getTheme(): Theme {
+  const accent = palette.mauve;
 
   return {
     ...palette,
@@ -99,11 +97,6 @@ export function getTheme(context: "remote" | "local"): Theme {
     panelBg: palette.base,
     panelBorder: palette.surface2,
     panelBorderFocused: accent,
-    // Context badge
-    contextBadge:
-      context === "local"
-        ? { label: "VPS", color: palette.teal }
-        : { label: "REMOTE", color: palette.mauve },
   };
 }
 
@@ -131,5 +124,62 @@ export const icons = {
   spinner: ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"],
 };
 
-// Brand constant
+// Brand constants
 export const BRAND_BLUE = "#4B68FE";
+export const VPS_GREEN = "#a6e3a1";
+
+// Simple block-style section header using Unicode upper-half blocks
+// Renders compact 2-line block text from a small character map
+const BLOCK_CHARS: Record<string, string[]> = {
+  A: ["▄▀▄", "█▀█"],
+  B: ["█▀▄", "█▄█"],
+  C: ["▄▀▀", "▀▄▄"],
+  D: ["█▀▄", "█▄▀"],
+  E: ["█▀▀", "██▄"],
+  F: ["█▀▀", "█▀ "],
+  G: ["▄▀▀", "▀▄█"],
+  H: ["█ █", "█▀█"],
+  I: ["▀█▀", " █ "],
+  J: [" ▀█", "▀▄█"],
+  K: ["█▀▄", "█ █"],
+  L: ["█  ", "██▄"],
+  M: ["█▄█", "█ █"],
+  N: ["█▀█", "█ █"],
+  O: ["▄▀▄", "▀▄▀"],
+  P: ["█▀▄", "█▀ "],
+  Q: ["▄▀▄", "▀▄▀"],
+  R: ["█▀▄", "█▀▄"],
+  S: ["▄▀▀", "▄▄▀"],
+  T: ["▀█▀", " █ "],
+  U: ["█ █", "▀▄▀"],
+  V: ["█ █", " █ "],
+  W: ["█ █", "█▀█"],
+  X: ["▀▄▀", "▄▀▄"],
+  Y: ["█ █", " █ "],
+  Z: ["▀▀█", "██▀"],
+  " ": ["   ", "   "],
+  "0": ["▄▀▄", "▀▄▀"],
+  "1": ["▄█ ", " █ "],
+  "2": ["▀▀▄", "█▄▄"],
+  "3": ["▀▀▄", "▄▄▀"],
+  "4": ["█ █", "▀▀█"],
+  "5": ["█▀▀", "▄▄▀"],
+  "6": ["▄▀▀", "▀▄▀"],
+  "7": ["▀▀█", "  █"],
+  "8": ["▄▀▄", "▀▄▀"],
+  "9": ["▄▀▄", "▀▀█"],
+  "(": ["▄▀ ", "▀▄ "],
+  ")": [" ▀▄", " ▄▀"],
+};
+
+export function toBlockText(str: string): string[] {
+  const upper = str.toUpperCase();
+  const line0: string[] = [];
+  const line1: string[] = [];
+  for (const ch of upper) {
+    const glyph = BLOCK_CHARS[ch] || ["   ", "   "];
+    line0.push(glyph[0]);
+    line1.push(glyph[1]);
+  }
+  return [line0.join(" "), line1.join(" ")];
+}

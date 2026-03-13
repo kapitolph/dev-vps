@@ -20,7 +20,7 @@ export async function renderInkDashboard(
   process.stdin.resume();
 
   const onVPS = isOnVPS();
-  const theme = getTheme(onVPS ? "local" : "remote");
+  const theme = getTheme();
 
   return new Promise<void>((resolve, reject) => {
     let instance: ReturnType<typeof render>;
