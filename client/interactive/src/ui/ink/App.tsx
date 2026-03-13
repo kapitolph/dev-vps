@@ -1,18 +1,22 @@
 import React, { useState, useCallback, useEffect } from "react";
-import { Box, Text, useInput } from "ink";
+import { Box, useInput } from "ink";
 import type { Machine, VersionInfo } from "../../types";
 import { useSessions } from "./hooks/useSessions";
+import { useTerminalSize } from "./hooks/useTerminalSize";
 import { Header } from "./components/Header";
+import { TabBar } from "./components/TabBar";
 import { SessionList } from "./components/SessionList";
 import { TeamSection } from "./components/TeamSection";
-import { ActionBar } from "./components/ActionBar";
-import { StaleNudge } from "./components/StaleNudge";
-import { theme } from "./theme";
+import { ButtonBar } from "./components/ButtonBar";
+import type { ButtonDef } from "./components/ButtonBar";
+import { StatusLine } from "./components/StatusLine";
+import { Spinner } from "./components/Spinner";
+import { EmptyState } from "./components/EmptyState";
+import { TextInput } from "./components/TextInput";
 
 type AppState =
   | { mode: "dashboard" }
   | { mode: "new-session"; input: string; error: string }
-  | { mode: "join-team" }
   | { mode: "confirm-stale" };
 
 export type AppAction =
@@ -33,19 +37,79 @@ interface Props {
 
 export function App({ machine, npdevUser, version, onAction }: Props) {
   const { mine, team, stale, loading, refresh } = useSessions(machine, npdevUser);
-  const [state, setState] = useState<AppState>({ mode: "dashboard" });
-  const [cursor, setCursor] = useState(0);
+  const { cols, rows, layout } = useTerminalSize();
 
-  // Clamp cursor when list size changes (e.g. after refresh)
-  const maxItems = state.mode === "join-team" ? team.length : mine.length;
+  const [state, setState] = useState<AppState>({ mode: "dashboard" });
+  const [activeTab, setActiveTab] = useState<"sessions" | "team">("sessions");
+  const [cursor, setCursor] = useState(0);
+  const [focusZone, setFocusZone] = useState<"list" | "buttons">("list");
+  const [focusedButton, setFocusedButton] = useState(0);
+  const [scrollOffset, setScrollOffset] = useState(0);
+
+  // Current list based on active tab
+  const currentList = activeTab === "sessions" ? mine : team;
+  const maxItems = currentList.length;
+
+  // Viewport windowing
+  const maxVisible = Math.max(3, rows - 8);
+
+  // Clamp cursor when list size changes
   useEffect(() => {
     setCursor((c) => Math.min(c, Math.max(0, maxItems - 1)));
   }, [maxItems]);
+
+  // Default focus to buttons when list is empty
+  useEffect(() => {
+    if (maxItems === 0 && !loading) {
+      setFocusZone("buttons");
+    }
+  }, [maxItems, loading]);
+
+  // Keep scroll offset following cursor
+  useEffect(() => {
+    setScrollOffset((offset) => {
+      if (cursor < offset) return cursor;
+      if (cursor >= offset + maxVisible) return cursor - maxVisible + 1;
+      return offset;
+    });
+  }, [cursor, maxVisible]);
 
   const clampCursor = useCallback(
     (n: number) => Math.max(0, Math.min(n, maxItems - 1)),
     [maxItems]
   );
+
+  const toggleTab = useCallback(() => {
+    setActiveTab((t) => {
+      const next = t === "sessions" ? "team" : "sessions";
+      // Only toggle if target has items
+      if (next === "team" && team.length === 0) return t;
+      return next;
+    });
+    setCursor(0);
+    setScrollOffset(0);
+  }, [team.length]);
+
+  // Button definitions
+  const buttons: ButtonDef[] = [
+    { key: "n", label: "New", action: () => setState({ mode: "new-session", input: "", error: "" }) },
+    ...(team.length > 0
+      ? [{ key: "t", label: activeTab === "team" ? "Sessions" : "Team", action: toggleTab }]
+      : []),
+    ...(stale.length > 0
+      ? [{ key: "c", label: "Clean", action: () => setState({ mode: "confirm-stale" }) }]
+      : []),
+    { key: "m", label: "Manage", action: () => onAction({ type: "manage" }) },
+    { key: "s", label: "Setup", action: () => onAction({ type: "setup" }) },
+    { key: "u", label: "Update", action: () => onAction({ type: "update" }) },
+    { key: "r", label: "Refresh", action: refresh },
+    { key: "q", label: "Quit", action: () => onAction({ type: "exit" }) },
+  ];
+
+  // Clamp focused button when buttons change
+  useEffect(() => {
+    setFocusedButton((f) => Math.min(f, Math.max(0, buttons.length - 1)));
+  }, [buttons.length]);
 
   useInput((input, key) => {
     if (loading) return;
@@ -89,158 +153,182 @@ export function App({ machine, npdevUser, version, onAction }: Props) {
       return;
     }
 
-    // Navigation
-    if (input === "j" || key.downArrow) {
-      setCursor((c) => clampCursor(c + 1));
-      return;
-    }
-    if (input === "k" || key.upArrow) {
-      setCursor((c) => clampCursor(c - 1));
+    // Tab key: toggle focus zone
+    if (key.tab) {
+      setFocusZone((z) => (z === "list" ? "buttons" : "list"));
       return;
     }
 
-    // Enter to select
-    if (key.return) {
-      if (state.mode === "join-team" && team.length > 0 && cursor < team.length) {
-        onAction({ type: "join-team", sessionName: team[cursor].name });
+    // Navigation in list zone
+    if (focusZone === "list") {
+      if (input === "j" || key.downArrow) {
+        setCursor((c) => clampCursor(c + 1));
         return;
       }
-      if (state.mode === "dashboard" && mine.length > 0 && cursor < mine.length) {
-        onAction({ type: "resume", sessionName: mine[cursor].name });
+      if (input === "k" || key.upArrow) {
+        setCursor((c) => clampCursor(c - 1));
         return;
       }
-    }
-
-    // Action shortcuts
-    if (state.mode === "dashboard" || state.mode === "join-team") {
-      switch (input) {
-        case "n":
-          setState({ mode: "new-session", input: "", error: "" });
-          setCursor(0);
-          return;
-        case "t":
-          if (team.length > 0) {
-            setState({ mode: "join-team" });
-            setCursor(0);
-          }
-          return;
-        case "c":
-          if (stale.length > 0) {
-            setState({ mode: "confirm-stale" });
-          }
-          return;
-        case "m":
-          onAction({ type: "manage" });
-          return;
-        case "s":
-          onAction({ type: "setup" });
-          return;
-        case "u":
-          onAction({ type: "update" });
-          return;
-        case "r":
-          refresh();
-          return;
-        case "q":
-          onAction({ type: "exit" });
-          return;
-      }
-      if (key.escape) {
-        if (state.mode === "join-team") {
-          setState({ mode: "dashboard" });
-          setCursor(0);
-          return;
+      // Enter to select session
+      if (key.return && maxItems > 0 && cursor < maxItems) {
+        if (activeTab === "team") {
+          onAction({ type: "join-team", sessionName: currentList[cursor].name });
+        } else {
+          onAction({ type: "resume", sessionName: currentList[cursor].name });
         }
-        onAction({ type: "exit" });
         return;
       }
+    }
+
+    // Navigation in button zone
+    if (focusZone === "buttons") {
+      if (key.leftArrow) {
+        setFocusedButton((f) => Math.max(0, f - 1));
+        return;
+      }
+      if (key.rightArrow) {
+        setFocusedButton((f) => Math.min(buttons.length - 1, f + 1));
+        return;
+      }
+      if (key.return) {
+        buttons[focusedButton]?.action();
+        return;
+      }
+    }
+
+    // Global shortcut keys (work in any focus zone)
+    const shortcut = buttons.find((b) => b.key === input);
+    if (shortcut) {
+      shortcut.action();
+      return;
+    }
+
+    if (key.escape) {
+      onAction({ type: "exit" });
     }
   });
 
+  const contentWidth = cols - 2;
+  const isEmpty = mine.length === 0 && team.length === 0;
+
+  // Loading state
   if (loading) {
     return (
-      <Box flexDirection="column" padding={1}>
-        <Header machineName={machine.name} npdevUser={npdevUser} version={version} />
-        <Box paddingX={1}>
-          <Text color={theme.overlay1}>Loading sessions...</Text>
+      <Box flexDirection="column" width={cols}>
+        <Header
+          machineName={machine.name}
+          npdevUser={npdevUser}
+          version={version}
+          cols={cols}
+          layout={layout}
+        />
+        <Box paddingX={1} paddingY={1}>
+          <Spinner label="Loading sessions..." />
         </Box>
       </Box>
     );
   }
 
-  const isJoining = state.mode === "join-team";
-
-  // Build action bar
-  const actions = [
-    ...(mine.length > 0 && !isJoining ? [{ key: "↵", label: "Resume" }] : []),
-    { key: "n", label: "New" },
-    ...(team.length > 0 ? [{ key: "t", label: isJoining ? "Back (esc)" : "Team" }] : []),
-    ...(stale.length > 0 ? [{ key: "c", label: "Clean stale" }] : []),
-    { key: "m", label: "Manage" },
-    { key: "s", label: "Setup" },
-    { key: "u", label: "Update" },
-    { key: "r", label: "Refresh" },
-    { key: "q", label: "Quit" },
-  ];
+  // Session area based on layout
+  const sessionArea = isEmpty ? (
+    <EmptyState />
+  ) : layout === "wide" ? (
+    // Wide: side by side
+    <Box flexDirection="row" gap={2}>
+      <Box flexDirection="column" flexGrow={1}>
+        {mine.length > 0 ? (
+          <SessionList
+            sessions={mine}
+            selectedIndex={activeTab === "sessions" ? cursor : -1}
+            selectable={activeTab === "sessions" && focusZone === "list"}
+            layout={layout}
+            width={Math.floor(contentWidth / 2) - 1}
+            scrollOffset={activeTab === "sessions" ? scrollOffset : 0}
+            maxVisible={maxVisible}
+          />
+        ) : (
+          <EmptyState />
+        )}
+      </Box>
+      {team.length > 0 && (
+        <Box flexDirection="column" flexGrow={1}>
+          <TeamSection
+            sessions={team}
+            selectedIndex={activeTab === "team" ? cursor : -1}
+            selectable={activeTab === "team" && focusZone === "list"}
+            layout={layout}
+            width={Math.floor(contentWidth / 2) - 1}
+            scrollOffset={activeTab === "team" ? scrollOffset : 0}
+            maxVisible={maxVisible}
+          />
+        </Box>
+      )}
+    </Box>
+  ) : (
+    // Normal/narrow: tabbed
+    <Box flexDirection="column">
+      <TabBar
+        activeTab={activeTab}
+        sessionCount={mine.length}
+        teamCount={team.length}
+      />
+      {activeTab === "sessions" ? (
+        <SessionList
+          sessions={mine}
+          selectedIndex={focusZone === "list" ? cursor : -1}
+          selectable={focusZone === "list"}
+          layout={layout}
+          width={contentWidth}
+          scrollOffset={scrollOffset}
+          maxVisible={maxVisible}
+        />
+      ) : (
+        <TeamSection
+          sessions={team}
+          selectedIndex={focusZone === "list" ? cursor : -1}
+          selectable={focusZone === "list"}
+          layout={layout}
+          width={contentWidth}
+          scrollOffset={scrollOffset}
+          maxVisible={maxVisible}
+        />
+      )}
+    </Box>
+  );
 
   return (
-    <Box flexDirection="column" padding={1} gap={1}>
-      <Header machineName={machine.name} npdevUser={npdevUser} version={version} />
-
-      {mine.length === 0 && team.length === 0 && (
-        <Box paddingX={1}>
-          <Text color={theme.overlay1}>No active sessions. Press </Text>
-          <Text color={theme.mauve} bold>n</Text>
-          <Text color={theme.overlay1}> to create one.</Text>
-        </Box>
-      )}
-
-      <SessionList
-        title="Your sessions"
-        sessions={mine}
-        selectedIndex={!isJoining ? cursor : -1}
-        selectable={!isJoining && state.mode === "dashboard"}
+    <Box flexDirection="column" width={cols}>
+      <Header
+        machineName={machine.name}
+        npdevUser={npdevUser}
+        version={version}
+        cols={cols}
+        layout={layout}
       />
-
-      <TeamSection
-        sessions={team}
-        selectedIndex={isJoining ? cursor : -1}
-        selectable={isJoining}
+      <Box flexDirection="column" flexGrow={1} gap={1} paddingX={1}>
+        {sessionArea}
+        {state.mode === "new-session" && (
+          <TextInput
+            label="Session name:"
+            value={state.input}
+            error={state.error || undefined}
+            hint="Enter to confirm, Esc to cancel"
+          />
+        )}
+      </Box>
+      <StatusLine
+        mode={state.mode}
+        activeTab={activeTab}
+        staleCount={stale.length}
+        sessionCount={mine.length + team.length}
+        confirmStale={state.mode === "confirm-stale"}
+        cols={cols}
       />
-
-      {stale.length > 0 && state.mode !== "confirm-stale" && (
-        <StaleNudge sessions={stale} />
-      )}
-
-      {state.mode === "confirm-stale" && (
-        <Box paddingX={1} gap={1}>
-          <Text color={theme.yellow}>
-            End {stale.length} stale session{stale.length > 1 ? "s" : ""}?
-          </Text>
-          <Text color={theme.mauve} bold>[y]</Text>
-          <Text color={theme.subtext0}> yes </Text>
-          <Text color={theme.mauve} bold>[n]</Text>
-          <Text color={theme.subtext0}> no</Text>
-        </Box>
-      )}
-
-      {state.mode === "new-session" && (
-        <Box flexDirection="column" paddingX={1}>
-          <Box gap={1}>
-            <Text color={theme.accent}>Session name:</Text>
-            <Text color={theme.text}>{state.input}</Text>
-            <Text color={theme.overlay0}>▌</Text>
-          </Box>
-          {state.error && (
-            <Text color={theme.red}>  {state.error}</Text>
-          )}
-          <Text color={theme.overlay1} dimColor>
-            Enter to confirm, Esc to cancel
-          </Text>
-        </Box>
-      )}
-
-      <ActionBar actions={actions} />
+      <ButtonBar
+        buttons={buttons}
+        focusedIndex={focusedButton}
+        isFocusZone={focusZone === "buttons"}
+      />
     </Box>
   );
 }

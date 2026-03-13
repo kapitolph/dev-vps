@@ -1,39 +1,56 @@
 import React from "react";
 import { Box, Text } from "ink";
 import type { SessionData } from "../../../types";
+import type { Layout } from "../hooks/useTerminalSize";
 import { SessionRow } from "./SessionRow";
-import { theme } from "../theme";
+import { useTheme } from "../context/ThemeContext";
 
 interface Props {
-  title: string;
   sessions: SessionData[];
   selectedIndex: number;
   selectable: boolean;
+  layout: Layout;
+  width: number;
+  scrollOffset: number;
+  maxVisible: number;
 }
 
-export function SessionList({ title, sessions, selectedIndex, selectable }: Props) {
+export function SessionList({
+  sessions,
+  selectedIndex,
+  selectable,
+  layout,
+  width,
+  scrollOffset,
+  maxVisible,
+}: Props) {
   if (sessions.length === 0) return null;
 
+  const theme = useTheme();
+  const visibleSessions = sessions.slice(scrollOffset, scrollOffset + maxVisible);
+  const aboveCount = scrollOffset;
+  const belowCount = Math.max(0, sessions.length - scrollOffset - maxVisible);
+
   return (
-    <Box
-      flexDirection="column"
-      borderStyle="round"
-      borderColor={selectable ? theme.borderFocused : theme.border}
-      paddingX={1}
-    >
-      <Box marginBottom={1}>
-        <Text bold color={selectable ? theme.accent : theme.subtext1}>
-          {title}
-        </Text>
-        <Text color={theme.overlay0}> ({sessions.length})</Text>
-      </Box>
-      {sessions.map((s, i) => (
+    <Box flexDirection="column">
+      <Text color={selectable ? theme.accent : theme.overlay1} dimColor={!selectable}>
+        ── Your sessions ({sessions.length}) ──
+      </Text>
+      {aboveCount > 0 && (
+        <Text color={theme.overlay1}> ↑ {aboveCount} more</Text>
+      )}
+      {visibleSessions.map((s, i) => (
         <SessionRow
           key={s.name}
           session={s}
-          isSelected={selectable && i === selectedIndex}
+          isSelected={selectable && scrollOffset + i === selectedIndex}
+          layout={layout}
+          width={width}
         />
       ))}
+      {belowCount > 0 && (
+        <Text color={theme.overlay1}> ↓ {belowCount} more</Text>
+      )}
     </Box>
   );
 }

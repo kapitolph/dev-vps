@@ -1,24 +1,19 @@
-// Catppuccin Mocha-inspired palette for the npdev TUI
-export const theme = {
-  // Base
+// Catppuccin Mocha palette + dual theme system for npdev TUI
+
+// Base Catppuccin Mocha colors (shared across themes)
+const palette = {
   base: "#1e1e2e",
   mantle: "#181825",
   crust: "#11111b",
-
-  // Surface
   surface0: "#313244",
   surface1: "#45475a",
   surface2: "#585b70",
-
-  // Text
   text: "#cdd6f4",
   subtext1: "#bac2de",
   subtext0: "#a6adc8",
   overlay2: "#9399b2",
   overlay1: "#7f849c",
   overlay0: "#6c7086",
-
-  // Accent colors
   blue: "#89b4fa",
   green: "#a6e3a1",
   yellow: "#f9e2af",
@@ -29,17 +24,78 @@ export const theme = {
   pink: "#f5c2e7",
   sky: "#89dcfe",
   lavender: "#b4befe",
+} as const;
 
+export interface Theme {
+  // Base palette
+  base: string;
+  mantle: string;
+  crust: string;
+  surface0: string;
+  surface1: string;
+  surface2: string;
+  text: string;
+  subtext1: string;
+  subtext0: string;
+  overlay2: string;
+  overlay1: string;
+  overlay0: string;
+  blue: string;
+  green: string;
+  yellow: string;
+  red: string;
+  mauve: string;
+  teal: string;
+  peach: string;
+  pink: string;
+  sky: string;
+  lavender: string;
   // Semantic
-  accent: "#89b4fa",
-  sessionActive: "#a6e3a1",
-  sessionIdle: "#89b4fa",
-  sessionStale: "#f9e2af",
-  cursor: "#cba6f7",
-  border: "#585b70",
-  borderFocused: "#89b4fa",
-  dimmed: "#6c7086",
-};
+  accent: string;
+  sessionActive: string;
+  sessionIdle: string;
+  sessionStale: string;
+  cursor: string;
+  border: string;
+  borderFocused: string;
+  dimmed: string;
+  // New semantic tokens
+  highlight: string;
+  buttonBg: string;
+  buttonFocusBg: string;
+  tabActive: string;
+  tabInactive: string;
+  // Context badge
+  contextBadge: { label: string; color: string };
+}
+
+export function getTheme(context: "remote" | "local"): Theme {
+  const accent = context === "local" ? palette.teal : palette.mauve;
+
+  return {
+    ...palette,
+    // Semantic
+    accent,
+    sessionActive: palette.green,
+    sessionIdle: palette.blue,
+    sessionStale: palette.yellow,
+    cursor: accent,
+    border: palette.surface2,
+    borderFocused: accent,
+    dimmed: palette.overlay0,
+    // New semantic tokens
+    highlight: palette.surface0,
+    buttonBg: palette.surface1,
+    buttonFocusBg: accent,
+    tabActive: accent,
+    tabInactive: palette.overlay1,
+    // Context badge
+    contextBadge:
+      context === "local"
+        ? { label: "VPS", color: palette.teal }
+        : { label: "REMOTE", color: palette.mauve },
+  };
+}
 
 // Status indicators
 export const icons = {
@@ -51,4 +107,8 @@ export const icons = {
   bullet: "·",
   separator: "│",
   warning: "▲",
+  spinner: ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"],
 };
+
+// Brand constant
+export const BRAND_BLUE = "#4B68FE";

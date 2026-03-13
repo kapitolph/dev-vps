@@ -26,10 +26,45 @@ Client (engineer's machine)          VPS (shared dev server)
 | `client/interactive/src/index.ts` | Entry point: arg parsing → dashboard or subcommand dispatch. Handles `npdev -` (resume last), `npdev .` (branch session), first-run inline setup, VPS-native detection. |
 | `client/interactive/src/commands/` | One file per command: start, end, sessions, shell, setup, update, sync-keys. |
 | `client/interactive/src/lib/` | Shared modules: ssh (VPS-aware), config (with `isOnVPS()`), machine selection, version check, sessions (fetchSessions, relativeTime, activityAge). |
-| `client/interactive/src/ui/menu.ts` | Smart dashboard: shows own sessions, team sessions grouped by owner, attachment counts, stale nudge, resume as default action. |
+| `client/interactive/src/ui/menu.ts` | Legacy text-menu dashboard (kept for `--old` fallback). |
 | `client/interactive/src/ui/welcome.ts` | Legacy welcome banner (no longer imported, kept for reference). |
+| `client/interactive/src/ui/ink/` | Ink-based TUI dashboard (default). See **Ink TUI Architecture** below. |
 | `client/interactive/build.sh` | Cross-platform `bun build --compile` (linux-x64, darwin-arm64, darwin-x64). |
 | `client/setup.sh` | Idempotent installer. Downloads compiled binary from GitHub releases (falls back to bash script). |
+
+#### Ink TUI Architecture
+
+The interactive dashboard uses React Ink with a dual-theme Catppuccin Mocha palette.
+
+**Theme system** (`theme.ts`): `getTheme("remote" | "local")` returns a `Theme` object. Remote uses mauve accent, local (VPS) uses teal. Theme is provided via React context (`context/ThemeContext.tsx`), consumed via `useTheme()` hook. Detection: `isOnVPS()` in `render.ts`.
+
+**Component tree:**
+```
+ThemeProvider (render.ts)
+└── App.tsx — state machine, input handling, layout orchestration
+    ├── Header — full-width inverse bar: logo badge, machine, user, version, context badge (VPS/REMOTE)
+    ├── TabBar — sessions/team tabs (normal/narrow only; wide mode shows both panels)
+    ├── SessionList / TeamSection — session rows with viewport windowing
+    │   └── SessionRow — full-width highlight, two-line layout (name + description)
+    ├── EmptyState — personality message when no sessions
+    ├── TextInput — bordered input for new-session name
+    ├── Spinner — animated braille spinner during loading
+    ├── StatusLine — contextual hints, stale nudge, confirm-stale inline
+    └── ButtonBar — navigable button row (replaces old ActionBar)
+```
+
+**State model** (App.tsx):
+- `AppState`: 3 modes — `dashboard`, `new-session`, `confirm-stale` (no separate join-team mode)
+- `activeTab`: `"sessions" | "team"` — controls which list is displayed/navigable
+- `focusZone`: `"list" | "buttons"` — Tab key toggles; determines where arrow keys + Enter apply
+- `cursor` / `focusedButton` / `scrollOffset` — navigation state
+
+**Input handling**: Shortcut keys (n, t, m, s, u, r, q) work globally regardless of focus zone. j/k and arrow keys navigate within the active focus zone. Enter acts on the focused item in the active zone.
+
+**Responsive layout** (`hooks/useTerminalSize.ts`):
+- Wide (>100 cols): sessions + team side by side
+- Normal (60–100): tabbed, one panel visible at a time
+- Narrow (<60): tabbed, descriptions hidden, names truncated
 
 ### Server (`server/`)
 
@@ -56,9 +91,9 @@ Client (engineer's machine)          VPS (shared dev server)
 - **Single shared user (`dev`)**: Enables tmux session sharing. Two devs running `npdev feature-x` attach to the same terminal.
 - **Per-developer identity**: `~/.vps/developers/<name>.env` sets `GIT_AUTHOR_NAME`, `GIT_AUTHOR_EMAIL`, `GIT_COMMITTER_NAME`, `GIT_COMMITTER_EMAIL`, `GH_TOKEN`. Sourced by `session.sh` at session start.
 - **Git credential helper**: `~/.vps/git-credential-token` reads `GH_TOKEN` from the session environment and passes it to git for HTTPS auth. Configured via `git config --global credential.helper`.
-- **Self-contained client**: After `npdev update` or `client/setup.sh`, the repo clone is not needed. `npdev` is a compiled Bun binary with interactive dashboard (via @clack/prompts).
+- **Self-contained client**: After `npdev update` or `client/setup.sh`, the repo clone is not needed. `npdev` is a compiled Bun binary with interactive dashboard (Ink TUI).
 - **Version check**: On every run, `npdev` checks GitHub for a newer version and warns the user.
-- **Smart dashboard**: Running `npdev` with no args on a TTY shows a context-aware dashboard with own sessions (resume as default), team sessions grouped by owner, attachment counts, and stale session cleanup. Non-TTY falls back to quick shell.
+- **Smart dashboard**: Running `npdev` with no args on a TTY shows an Ink-based TUI with dual themes (teal on VPS, mauve remote), navigable button bar, full-width session highlights, responsive layout (wide/normal/narrow), and tab-based focus zones. Non-TTY falls back to quick shell. `--old` flag uses the legacy text menu.
 - **VPS-native mode**: When `~/.vps` exists, `npdev` runs commands locally (no SSH to self) and uses `tmux switch-client` instead of `attach-session` when already inside tmux.
 - **Shortcuts**: `npdev -` resumes the most recent own session. `npdev .` creates/attaches a session named after the current git branch.
 - **First-run inline setup**: If `NPDEV_USER` is not set, `npdev` launches setup interactively instead of showing an error.

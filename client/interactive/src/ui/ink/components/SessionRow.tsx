@@ -1,17 +1,22 @@
 import React from "react";
-import { Box, Text } from "ink";
+import { Box, Text, Spacer } from "ink";
 import type { SessionData } from "../../../types";
 import { relativeTime, activityAge } from "../../../lib/sessions";
-import { theme, icons } from "../theme";
+import type { Layout } from "../hooks/useTerminalSize";
+import { useTheme } from "../context/ThemeContext";
+import { icons } from "../theme";
 
 interface Props {
   session: SessionData;
   isSelected: boolean;
   showOwner?: boolean;
   ownerLabel?: string;
+  layout: Layout;
+  width: number;
 }
 
-export function SessionRow({ session, isSelected, showOwner, ownerLabel }: Props) {
+export function SessionRow({ session, isSelected, showOwner, ownerLabel, layout, width }: Props) {
+  const theme = useTheme();
   const count = parseInt(session.client_count || "0", 10);
   const age = activityAge(session.last_activity);
   const isStale = age > 3 * 86400;
@@ -25,28 +30,51 @@ export function SessionRow({ session, isSelected, showOwner, ownerLabel }: Props
 
   const statusIcon = isActive ? icons.active : isStale ? icons.stale : icons.idle;
 
+  const displayName = layout === "narrow"
+    ? session.name.slice(0, 16)
+    : session.name;
+
+  const hasDescription =
+    session.description &&
+    session.description !== "(no description)" &&
+    !isActive &&
+    layout !== "narrow";
+
   return (
-    <Box gap={1}>
-      <Text color={isSelected ? theme.cursor : undefined}>
-        {isSelected ? icons.cursor : " "}
-      </Text>
-      <Text color={statusColor}>{statusIcon}</Text>
-      <Text bold={isSelected} color={isSelected ? theme.accent : theme.text}>
-        {session.name.padEnd(22)}
-      </Text>
-      {showOwner && ownerLabel !== undefined && (
-        <Text color={theme.overlay1}>{(ownerLabel || "").padEnd(10)}</Text>
-      )}
-      <Text color={isStale ? theme.yellow : theme.overlay1}>
-        {relativeTime(session.last_activity).padEnd(10)}
-      </Text>
-      {isActive && (
-        <Text color={theme.green}>{count} attached</Text>
-      )}
-      {session.description && session.description !== "(no description)" && !isActive && (
-        <Text color={theme.overlay0} wrap="truncate">
-          {session.description.slice(0, 40)}
+    <Box
+      flexDirection="column"
+      width={width}
+      backgroundColor={isSelected ? theme.highlight : undefined}
+    >
+      {/* Line 1 */}
+      <Box>
+        <Text color={isSelected ? theme.cursor : undefined}>
+          {isSelected ? icons.cursor : " "}
         </Text>
+        <Text> </Text>
+        <Text color={statusColor}>{statusIcon}</Text>
+        <Text> </Text>
+        <Text bold={isSelected} color={isSelected ? theme.accent : theme.text}>
+          {displayName}
+        </Text>
+        {showOwner && ownerLabel !== undefined && (
+          <Text color={theme.overlay1}> {ownerLabel}</Text>
+        )}
+        <Spacer />
+        <Text color={isStale ? theme.yellow : theme.overlay1}>
+          {relativeTime(session.last_activity)}
+        </Text>
+        {isActive && (
+          <Text color={theme.green}> {icons.attached} {count}</Text>
+        )}
+      </Box>
+      {/* Line 2: description */}
+      {hasDescription && (
+        <Box paddingLeft={4}>
+          <Text color={theme.overlay0} wrap="truncate">
+            {session.description.slice(0, Math.max(20, width - 8))}
+          </Text>
+        </Box>
       )}
     </Box>
   );

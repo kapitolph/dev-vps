@@ -3,6 +3,9 @@ import { render } from "ink";
 import type { Machine, VersionInfo } from "../../types";
 import { App } from "./App";
 import type { AppAction } from "./App";
+import { ThemeProvider } from "./context/ThemeContext";
+import { getTheme } from "./theme";
+import { isOnVPS } from "../../lib/config";
 import { cmdStart } from "../../commands/start";
 import { cmdSessions } from "../../commands/sessions";
 import { cmdSetup } from "../../commands/setup";
@@ -16,6 +19,8 @@ export async function renderInkDashboard(
 ): Promise<void> {
   // Bun workaround: stdin must be resumed for Ink to read input
   process.stdin.resume();
+
+  const theme = getTheme(isOnVPS() ? "local" : "remote");
 
   return new Promise<void>((resolve, reject) => {
     let instance: ReturnType<typeof render>;
@@ -57,12 +62,16 @@ export async function renderInkDashboard(
     };
 
     instance = render(
-      React.createElement(App, {
-        machine,
-        npdevUser,
-        version,
-        onAction: handleAction,
-      })
+      React.createElement(
+        ThemeProvider,
+        { value: theme },
+        React.createElement(App, {
+          machine,
+          npdevUser,
+          version,
+          onAction: handleAction,
+        })
+      )
     );
 
     instance.waitUntilExit().then(resolve);

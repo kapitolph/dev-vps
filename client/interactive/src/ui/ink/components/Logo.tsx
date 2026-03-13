@@ -1,13 +1,11 @@
 import React from "react";
 import { Text } from "ink";
-
-const BRAND_BLUE = "#4B68FE";
+import { BRAND_BLUE } from "../theme";
 
 export function Logo() {
   return (
-    <>
-      <Text color={BRAND_BLUE} bold>{"❯❯"}</Text>
-      <Text color={BRAND_BLUE} bold>{" nextpay"}</Text>
-    </>
+    <Text backgroundColor={BRAND_BLUE} color="#1e1e2e" bold>
+      {" ❯❯ nextpay "}
+    </Text>
   );
 }
