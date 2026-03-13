@@ -1,7 +1,7 @@
 // npdev version — auto-incremented by CI on each release
 import type { VersionInfo } from "../types";
 
-export const NPDEV_VERSION = "1.1.16";
+export const NPDEV_VERSION = "1.1.17";
 const GITHUB_REPO = "kapitolph/npdev";
 
 function isNewer(a: string, b: string): boolean {
