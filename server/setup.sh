@@ -325,29 +325,15 @@ info "Installing npdev CLI on VPS..."
 NPDEV_INSTALL_DIR="/home/$SHARED_USER/.local/bin"
 mkdir -p "$NPDEV_INSTALL_DIR"
 
-NPDEV_PLATFORM="linux-x64"
-case "$(uname -m)" in
-  aarch64|arm64) NPDEV_PLATFORM="linux-arm64" ;;
-esac
-
-if [[ -n "$REPO_ROOT" ]] && [[ -f "$REPO_ROOT/client/interactive/dist/npdev-${NPDEV_PLATFORM}" ]]; then
-  cp "$REPO_ROOT/client/interactive/dist/npdev-${NPDEV_PLATFORM}" "$NPDEV_INSTALL_DIR/npdev"
-  ok "Installed npdev from repo build (${NPDEV_PLATFORM})"
-elif [[ -n "$REPO_ROOT" ]] && [[ -f "$REPO_ROOT/client/interactive/dist/npdev" ]]; then
-  cp "$REPO_ROOT/client/interactive/dist/npdev" "$NPDEV_INSTALL_DIR/npdev"
-  ok "Installed npdev from repo build (unplatformed)"
-else
-  info "Downloading npdev-${NPDEV_PLATFORM} from GitHub releases..."
-  if curl -fsSL -o "$NPDEV_INSTALL_DIR/npdev" \
-    "https://github.com/kapitolph/npdev/releases/latest/download/npdev-${NPDEV_PLATFORM}" 2>/dev/null; then
-    ok "Installed npdev from GitHub releases (${NPDEV_PLATFORM})"
-  else
-    warn "Could not download npdev binary — install manually with: npdev update"
-  fi
-fi
-chmod +x "$NPDEV_INSTALL_DIR/npdev" 2>/dev/null || true
+# On VPS, run npdev from source via bun (always up to date with repo)
+cat > "$NPDEV_INSTALL_DIR/npdev" << 'NPDEV_WRAPPER'
+#!/bin/bash
+# Run npdev from source — always up to date with the repo
+exec bun run /home/dev/npdev/client/interactive/src/index.ts "$@"
+NPDEV_WRAPPER
+chmod +x "$NPDEV_INSTALL_DIR/npdev"
 chown -R "$SHARED_USER:$SHARED_GROUP" "$NPDEV_INSTALL_DIR"
-ok "npdev CLI available on VPS"
+ok "npdev CLI available on VPS (runs from source)"
 
 # ─── Step 16: Configure dev user's shell PATH ────────────────────────────────
 info "Configuring shell environment..."
