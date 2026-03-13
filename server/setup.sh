@@ -325,11 +325,10 @@ info "Installing npdev CLI on VPS..."
 NPDEV_INSTALL_DIR="/home/$SHARED_USER/.local/bin"
 mkdir -p "$NPDEV_INSTALL_DIR"
 
-# On VPS, run npdev from source via bun (always up to date with repo)
+# On VPS, run npdev from built bundle via bun (rebuild with: cd ~/npdev/client/interactive && bun run build)
 cat > "$NPDEV_INSTALL_DIR/npdev" << 'NPDEV_WRAPPER'
 #!/bin/bash
-# Run npdev from source — always up to date with the repo
-exec bun run /home/dev/npdev/client/interactive/src/index.ts "$@"
+exec bun run /home/dev/npdev/client/interactive/dist/npdev.js "$@"
 NPDEV_WRAPPER
 chmod +x "$NPDEV_INSTALL_DIR/npdev"
 chown -R "$SHARED_USER:$SHARED_GROUP" "$NPDEV_INSTALL_DIR"
