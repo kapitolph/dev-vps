@@ -5,6 +5,7 @@ export interface ButtonDef {
   key: string;
   label: string;
   action: () => void;
+  highlight?: boolean;
 }
 
 interface Props {
@@ -20,16 +21,19 @@ export function ButtonBar({ buttons, focusedIndex, isFocusZone }: Props) {
     <Box gap={1} flexWrap="wrap">
       {buttons.map((btn, i) => {
         const isFocused = i === focusedIndex && isFocusZone;
+        const color = isFocused ? theme.accent : btn.highlight ? theme.yellow : theme.overlay0;
+        const labelColor = isFocused ? theme.accent : btn.highlight ? theme.yellow : theme.subtext0;
+        const borderColor = isFocused ? theme.accent : btn.highlight ? theme.yellow : theme.surface1;
 
         return (
           <Box
             key={btn.key}
             borderStyle="round"
-            borderColor={isFocused ? theme.accent : theme.surface1}
+            borderColor={borderColor}
             paddingX={1}
           >
-            <Text color={isFocused ? theme.accent : theme.overlay0}>{btn.key}</Text>
-            <Text color={isFocused ? theme.accent : theme.subtext0}> {btn.label}</Text>
+            <Text color={color}>{btn.key}</Text>
+            <Text color={labelColor}> {btn.label}</Text>
           </Box>
         );
       })}

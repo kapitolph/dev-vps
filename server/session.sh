@@ -93,7 +93,7 @@ has_active_entry() {
 }
 
 cmd_start() {
-  local name="$1" type="${2:-shell}" desc="${3:-}" dev_user="${4:-}"
+  local name="$1" type="${2:-shell}" desc="${3:-}" dev_user="${4:-}" start_dir="${5:-}"
 
   # If tmux session already exists, just attach (pair programming!)
   if tmux_running "$name"; then
@@ -118,9 +118,10 @@ cmd_start() {
   # Add registry entry
   registry_add "$name" "$type" "$desc" "$dev_user"
 
-  # Use REPO_DIR if it exists, otherwise home
+  # Use start_dir if provided, else REPO_DIR, else HOME
   local work_dir="$HOME"
-  [[ -d "$REPO_DIR" ]] && work_dir="$REPO_DIR"
+  [[ -n "$start_dir" && -d "$start_dir" ]] && work_dir="$start_dir"
+  [[ -z "$start_dir" && -d "$REPO_DIR" ]] && work_dir="$REPO_DIR"
 
   # Build env preamble (source developer identity if available)
   # Uses a per-session gitconfig file so concurrent sessions don't overwrite each other
@@ -303,6 +304,8 @@ cmd_session_data() {
     last_activity=$(tmux -f "$TMUX_CONF" display-message -p -t "$sname" '#{session_activity}' 2>/dev/null || echo "")
     local client_count
     client_count=$(tmux -f "$TMUX_CONF" display-message -p -t "$sname" '#{session_attached}' 2>/dev/null || echo "0")
+    local pane_cwd
+    pane_cwd=$(tmux -f "$TMUX_CONF" display-message -p -t "$sname" '#{pane_current_path}' 2>/dev/null || echo "")
 
     # Get attached developer names
     local attached_users=""
@@ -326,14 +329,48 @@ cmd_session_data() {
 
     [[ $first -eq 0 ]] && printf ','
     first=0
-    printf '{"name":"%s","type":"%s","description":"%s","owner":"%s","created_at":"%s","last_activity":"%s","client_count":"%s","attached_users":"%s"}' \
-      "$sname" "$stype" "$safe_desc" "$sowner" "$screated" "$last_activity" "$client_count" "$attached_users"
+    printf '{"name":"%s","type":"%s","description":"%s","owner":"%s","created_at":"%s","last_activity":"%s","client_count":"%s","attached_users":"%s","pane_cwd":"%s"}' \
+      "$sname" "$stype" "$safe_desc" "$sowner" "$screated" "$last_activity" "$client_count" "$attached_users" "$pane_cwd"
   done <<< "$entries"
   printf ']\n'
 }
 
 cmd_registry() {
   cat "$REGISTRY"
+}
+
+cmd_repo_list() {
+  # Find git repos up to 3 levels deep, output JSON
+  local first=1
+  printf '['
+  while IFS= read -r gitdir; do
+    local repo_path="${gitdir%/.git}"
+    local repo_name="${repo_path##*/}"
+    local branch
+    branch=$(git -C "$repo_path" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
+    [[ $first -eq 0 ]] && printf ','
+    first=0
+    printf '{"path":"%s","name":"%s","branch":"%s"}' "$repo_path" "$repo_name" "$branch"
+  done < <(find "$HOME" -maxdepth 3 -name .git -type d -not -path '*/node_modules/*' -not -path '*/.cache/*' 2>/dev/null | sort)
+  printf ']\n'
+}
+
+cmd_repo_commits() {
+  local repo_path="$1"
+  local count="${2:-10}"
+  local first=1
+  printf '['
+  while IFS=$'\t' read -r hash author date subject; do
+    [[ -z "$hash" ]] && continue
+    local safe_subject
+    safe_subject=$(printf '%s' "$subject" | sed 's/\\/\\\\/g; s/"/\\"/g' | tr -d '\000-\037')
+    local safe_author
+    safe_author=$(printf '%s' "$author" | sed 's/\\/\\\\/g; s/"/\\"/g')
+    [[ $first -eq 0 ]] && printf ','
+    first=0
+    printf '{"hash":"%s","author":"%s","date":"%s","subject":"%s"}' "$hash" "$safe_author" "$date" "$safe_subject"
+  done < <(git -C "$repo_path" log --format='%h%x09%an%x09%cr%x09%s' -"$count" 2>/dev/null)
+  printf ']\n'
 }
 
 # Main dispatch
@@ -345,5 +382,7 @@ case "${1:-}" in
   reconcile) cmd_reconcile ;;
   session-data) cmd_session_data ;;
   registry) cmd_registry ;;
-  *)        echo "Usage: session.sh {start|end|list|describe|reconcile|session-data|registry} [args...]" >&2; exit 1 ;;
+  repo-list) cmd_repo_list ;;
+  repo-commits) shift; [[ $# -lt 1 ]] && { echo "Usage: session.sh repo-commits <path> [count]" >&2; exit 1; }; cmd_repo_commits "$@" ;;
+  *)        echo "Usage: session.sh {start|end|list|describe|reconcile|session-data|registry|repo-list|repo-commits} [args...]" >&2; exit 1 ;;
 esac

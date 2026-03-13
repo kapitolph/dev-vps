@@ -1,4 +1,4 @@
-import type { Machine, SessionData } from "../types";
+import type { CommitData, Machine, RepoData, SessionData } from "../types";
 import { sshExec } from "./ssh";
 
 export async function fetchSessions(machine: Machine): Promise<SessionData[]> {
@@ -9,6 +9,26 @@ export async function fetchSessions(machine: Machine): Promise<SessionData[]> {
   } catch {
     return [];
   }
+}
+
+export async function fetchRepos(machine: Machine): Promise<RepoData[]> {
+  const { stdout, exitCode } = await sshExec(machine, "bash ~/.vps/session.sh repo-list");
+  if (exitCode !== 0 || !stdout) return [];
+  try { return JSON.parse(stdout); } catch { return []; }
+}
+
+export async function fetchRepoCommits(machine: Machine, repoPath: string): Promise<CommitData[]> {
+  const { stdout, exitCode } = await sshExec(machine, `bash ~/.vps/session.sh repo-commits '${repoPath}' 15`);
+  if (exitCode !== 0 || !stdout) return [];
+  try { return JSON.parse(stdout); } catch { return []; }
+}
+
+export function deriveRepoName(session: SessionData, repos: RepoData[]): string | undefined {
+  if (!session.pane_cwd) return undefined;
+  const match = repos
+    .filter(r => session.pane_cwd!.startsWith(r.path))
+    .sort((a, b) => b.path.length - a.path.length)[0];
+  return match?.name;
 }
 
 export function relativeTime(epoch: string): string {

@@ -2,6 +2,7 @@ import { render } from "ink";
 import React from "react";
 import { cmdStart } from "../../commands/start";
 import { isOnVPS } from "../../lib/config";
+import { sshInteractive } from "../../lib/ssh";
 import type { Machine, VersionInfo } from "../../types";
 import type { AppAction } from "./App";
 import { App } from "./App";
@@ -37,6 +38,16 @@ export async function renderInkDashboard(
             await cmdStart(machine, action.sessionName, npdevUser);
             resolve();
             break;
+          case "new-session-in-repo":
+            await cmdStart(machine, action.sessionName, npdevUser, undefined, action.repoPath);
+            resolve();
+            break;
+          case "cd-to-repo": {
+            const envCmd = `source ~/.vps/developers/${npdevUser}.env 2>/dev/null; `;
+            await sshInteractive(machine, `${envCmd}cd '${action.repoPath}' && exec $SHELL -l`);
+            resolve();
+            break;
+          }
           case "update-done":
             // Binary was replaced on disk — exit so user restarts with new version
             process.stdout.write("\x1B[2J\x1B[H");

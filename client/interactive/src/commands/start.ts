@@ -6,6 +6,7 @@ export async function cmdStart(
   name: string,
   npdevUser: string,
   description?: string,
+  repoPath?: string,
 ): Promise<void> {
   if (!/^[a-zA-Z0-9_-]+$/.test(name)) {
     console.error(
@@ -15,7 +16,8 @@ export async function cmdStart(
   }
 
   const desc = description || "(no description)";
-  const cmd = `bash ~/.vps/session.sh start '${name}' 'shell' '${desc}' '${npdevUser}'`;
+  const dirArg = repoPath ? ` '${repoPath}'` : "";
+  const cmd = `bash ~/.vps/session.sh start '${name}' 'shell' '${desc}' '${npdevUser}'${dirArg}`;
   const exitCode = await sshInteractive(machine, cmd);
   process.exit(exitCode);
 }

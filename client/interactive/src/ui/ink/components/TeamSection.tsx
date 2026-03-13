@@ -1,11 +1,13 @@
 import { Box, Text } from "ink";
-import type { SessionData } from "../../../types";
+import { deriveRepoName } from "../../../lib/sessions";
+import type { RepoData, SessionData } from "../../../types";
 import { useTheme } from "../context/ThemeContext";
 import type { Layout } from "../hooks/useTerminalSize";
 import { SessionRow } from "./SessionRow";
 
 interface Props {
   sessions: SessionData[];
+  repos: RepoData[];
   selectedIndex: number;
   selectable: boolean;
   layout: Layout;
@@ -17,6 +19,7 @@ interface Props {
 
 export function TeamSection({
   sessions,
+  repos,
   selectedIndex,
   selectable,
   layout,
@@ -45,8 +48,8 @@ export function TeamSection({
       borderColor={focused ? theme.panelBorderFocused : theme.panelBorder}
       paddingLeft={1}
     >
-      <Box paddingBottom={1}>
-        <Text color={focused ? theme.accent : theme.overlay1}>Team</Text>
+      <Box paddingTop={1} paddingBottom={1}>
+        <Text bold color={focused ? theme.accent : theme.overlay1}>Team</Text>
         <Text color={theme.overlay0}> ({sessions.length})</Text>
       </Box>
       {aboveCount > 0 && <Text color={theme.overlay1}> ↑ {aboveCount} more</Text>}
@@ -57,6 +60,7 @@ export function TeamSection({
           isSelected={selectable && scrollOffset + i === selectedIndex}
           showOwner
           ownerLabel={s.owner}
+          repoName={deriveRepoName(s, repos)}
           layout={layout}
           width={width}
         />

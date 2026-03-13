@@ -18,6 +18,20 @@ export interface SessionData {
   last_activity: string;
   client_count: string;
   attached_users?: string;
+  pane_cwd?: string;
+}
+
+export interface RepoData {
+  path: string;
+  name: string;
+  branch: string;
+}
+
+export interface CommitData {
+  hash: string;
+  author: string;
+  date: string;
+  subject: string;
 }
 
 export interface VersionInfo {

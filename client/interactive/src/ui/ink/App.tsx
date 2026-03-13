@@ -1,14 +1,18 @@
 import { Box, useInput } from "ink";
 import { useCallback, useEffect, useState } from "react";
+import { deriveRepoName } from "../../lib/sessions";
 import { sshExec } from "../../lib/ssh";
-import type { Machine, VersionInfo } from "../../types";
+import type { Machine, RepoData, VersionInfo } from "../../types";
 import type { ButtonDef } from "./components/ButtonBar";
 import { ButtonBar } from "./components/ButtonBar";
 import { EmptyState } from "./components/EmptyState";
 import { Header } from "./components/Header";
 import { NewSessionPage } from "./components/NewSessionPage";
+import { RepoDetailPage } from "./components/RepoDetailPage";
+import { RepoList } from "./components/RepoList";
 import { SessionList } from "./components/SessionList";
 import { SetupPage } from "./components/SetupPage";
+import { SkeletonLoader } from "./components/SkeletonLoader";
 import { Spinner } from "./components/Spinner";
 import { StaleNudge } from "./components/StaleNudge";
 import { StatusLine } from "./components/StatusLine";
@@ -16,12 +20,15 @@ import { TabBar } from "./components/TabBar";
 import { TeamSection } from "./components/TeamSection";
 import { UpdatePage } from "./components/UpdatePage";
 import { useTheme } from "./context/ThemeContext";
+import { useRepos } from "./hooks/useRepos";
 import { useSessions } from "./hooks/useSessions";
 import { useTerminalSize } from "./hooks/useTerminalSize";
 
 type Route =
   | { page: "dashboard" }
   | { page: "new-session" }
+  | { page: "new-session-in-repo"; repoPath: string; repoName: string }
+  | { page: "repo-detail"; repoPath: string; repoName: string }
   | { page: "update" }
   | { page: "setup" };
 
@@ -33,9 +40,13 @@ type DashboardMode =
 export type AppAction =
   | { type: "resume"; sessionName: string }
   | { type: "new-session"; sessionName: string }
+  | { type: "new-session-in-repo"; sessionName: string; repoPath: string }
+  | { type: "cd-to-repo"; repoPath: string }
   | { type: "join-team"; sessionName: string }
   | { type: "update-done" }
   | { type: "exit" };
+
+type FocusColumn = "sessions" | "repos" | "team";
 
 interface Props {
   machine: Machine;
@@ -46,33 +57,64 @@ interface Props {
 }
 
 export function App({ machine, npdevUser, version, isOnVPS, onAction }: Props) {
-  const { mine, team, stale, loading, refresh } = useSessions(machine, npdevUser);
+  const { sessions, mine, team, stale, loading, refresh } = useSessions(machine, npdevUser);
+  const { repos, loading: reposLoading, refresh: refreshRepos } = useRepos(machine);
   const { cols, rows, layout } = useTerminalSize();
   const theme = useTheme();
 
   const [route, setRoute] = useState<Route>({ page: "dashboard" });
   const [dashMode, setDashMode] = useState<DashboardMode>({ mode: "normal" });
-  const [activePanel, setActivePanel] = useState<"mine" | "team">("mine");
+  const [focusColumn, setFocusColumn] = useState<FocusColumn>("sessions");
   const [cursorArea, setCursorArea] = useState<"actions" | "sessions">("actions");
-  const [cursor, setCursor] = useState(0);
+  const [sessionCursor, setSessionCursor] = useState(0);
+  const [repoCursor, setRepoCursor] = useState(0);
+  const [teamCursor, setTeamCursor] = useState(0);
   const [focusedButton, setFocusedButton] = useState(0);
-  const [scrollOffset, setScrollOffset] = useState(0);
+  const [sessionScrollOffset, setSessionScrollOffset] = useState(0);
+  const [repoScrollOffset, setRepoScrollOffset] = useState(0);
+  const [teamScrollOffset, setTeamScrollOffset] = useState(0);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [showStaleNudge, setShowStaleNudge] = useState(true);
 
-  // Current list based on active panel
-  const currentList = activePanel === "mine" ? mine : team;
-  const maxItems = currentList.length;
+  // For narrow layout, focusColumn doubles as the active tab
+  const narrowTab = focusColumn;
 
-  // Buttons are horizontal — 1 line each (3 with border top/bottom)
+  // Determine which columns are available
+  const hasRepos = repos.length > 0;
+  const hasTeam = team.length > 0;
+
+  // Available columns in order
+  const availableColumns: FocusColumn[] = ["sessions", ...(hasRepos ? ["repos" as const] : []), ...(hasTeam ? ["team" as const] : [])];
+
+  // Current list / max items for current column
+  const currentMaxItems = focusColumn === "sessions" ? mine.length
+    : focusColumn === "repos" ? repos.length
+    : team.length;
+
+  const currentCursor = focusColumn === "sessions" ? sessionCursor
+    : focusColumn === "repos" ? repoCursor
+    : teamCursor;
+
+  const setCurrentCursor = focusColumn === "sessions" ? setSessionCursor
+    : focusColumn === "repos" ? setRepoCursor
+    : setTeamCursor;
+
+  const currentScrollOffset = focusColumn === "sessions" ? sessionScrollOffset
+    : focusColumn === "repos" ? repoScrollOffset
+    : teamScrollOffset;
+
+  const setCurrentScrollOffset = focusColumn === "sessions" ? setSessionScrollOffset
+    : focusColumn === "repos" ? setRepoScrollOffset
+    : setTeamScrollOffset;
+
   const maxVisible = Math.max(3, rows - 14);
 
-  // Move cursor and scroll offset together in one batch
+  // Move cursor and scroll offset together
   const moveCursor = useCallback(
     (delta: number) => {
-      setCursor((prev) => {
-        const next = Math.max(0, Math.min(prev + delta, maxItems - 1));
-        setScrollOffset((offset) => {
+      setCurrentCursor((prev) => {
+        const next = Math.max(0, Math.min(prev + delta, currentMaxItems - 1));
+        setCurrentScrollOffset((offset) => {
           if (next < offset) return next;
           if (next >= offset + maxVisible) return next - maxVisible + 1;
           return offset;
@@ -80,21 +122,19 @@ export function App({ machine, npdevUser, version, isOnVPS, onAction }: Props) {
         return next;
       });
     },
-    [maxItems, maxVisible],
+    [currentMaxItems, maxVisible, setCurrentCursor, setCurrentScrollOffset],
   );
 
-  // Clamp cursor when list size changes
+  // Clamp cursors when lists change
   useEffect(() => {
-    setCursor((c) => {
-      const clamped = Math.min(c, Math.max(0, maxItems - 1));
-      setScrollOffset((offset) => {
-        if (clamped < offset) return clamped;
-        if (clamped >= offset + maxVisible) return clamped - maxVisible + 1;
-        return offset;
-      });
-      return clamped;
-    });
-  }, [maxItems, maxVisible]);
+    setSessionCursor(c => Math.min(c, Math.max(0, mine.length - 1)));
+  }, [mine.length]);
+  useEffect(() => {
+    setRepoCursor(c => Math.min(c, Math.max(0, repos.length - 1)));
+  }, [repos.length]);
+  useEffect(() => {
+    setTeamCursor(c => Math.min(c, Math.max(0, team.length - 1)));
+  }, [team.length]);
 
   // Auto-dismiss stale nudge after 5s
   useEffect(() => {
@@ -104,21 +144,18 @@ export function App({ machine, npdevUser, version, isOnVPS, onAction }: Props) {
     }
   }, [stale.length, loading, showStaleNudge]);
 
-  const switchPanel = useCallback(() => {
-    setActivePanel((p) => {
-      const next = p === "mine" ? "team" : "mine";
-      if (next === "team" && team.length === 0) return p;
-      return next;
-    });
-    setCursor(0);
-    setScrollOffset(0);
-    setSelected(new Set());
-  }, [team.length]);
+  // Cycle to next available column
+  const cycleColumn = useCallback(() => {
+    const idx = availableColumns.indexOf(focusColumn);
+    const next = availableColumns[(idx + 1) % availableColumns.length];
+    setFocusColumn(next);
+  }, [availableColumns, focusColumn]);
 
   const doRefresh = useCallback(() => {
     setSelected(new Set());
     refresh();
-  }, [refresh]);
+    refreshRepos();
+  }, [refresh, refreshRepos]);
 
   const endSession = useCallback(
     async (name: string) => {
@@ -155,6 +192,7 @@ export function App({ machine, npdevUser, version, isOnVPS, onAction }: Props) {
             key: "u",
             label: "Update",
             action: () => setRoute({ page: "update" }),
+            highlight: !!version.latest,
           },
         ]
       : []),
@@ -214,6 +252,24 @@ export function App({ machine, npdevUser, version, isOnVPS, onAction }: Props) {
       return;
     }
 
+    // Tab key: cycle focus
+    if (key.tab) {
+      if (cursorArea === "actions") {
+        setCursorArea("sessions");
+        // Focus first available column
+        setFocusColumn(availableColumns[0]);
+      } else {
+        const idx = availableColumns.indexOf(focusColumn);
+        if (idx >= availableColumns.length - 1) {
+          // Wrap to actions
+          setCursorArea("actions");
+        } else {
+          setFocusColumn(availableColumns[idx + 1]);
+        }
+      }
+      return;
+    }
+
     // Navigation in actions row (horizontal)
     if (cursorArea === "actions") {
       if (key.leftArrow) {
@@ -225,7 +281,7 @@ export function App({ machine, npdevUser, version, isOnVPS, onAction }: Props) {
         return;
       }
       if (key.downArrow || input === "j") {
-        if (maxItems > 0) {
+        if (currentMaxItems > 0 || availableColumns.length > 0) {
           setCursorArea("sessions");
         }
         return;
@@ -236,36 +292,70 @@ export function App({ machine, npdevUser, version, isOnVPS, onAction }: Props) {
       }
     }
 
-    // Navigation in session list
+    // Navigation in column area
     if (cursorArea === "sessions") {
       if (key.downArrow || input === "j") {
         moveCursor(1);
         return;
       }
-      if (key.upArrow || input === "k") {
-        if (cursor === 0) {
+      if (key.upArrow || (input === "k" && focusColumn !== "sessions")) {
+        // In repos/team columns, k is vim up (no kill conflict)
+        if (currentCursor === 0) {
           setCursorArea("actions");
         } else {
           moveCursor(-1);
         }
         return;
       }
-      if (key.leftArrow || key.rightArrow) {
-        switchPanel();
-        return;
-      }
-      // Enter to select session
-      if (key.return && maxItems > 0 && cursor < maxItems) {
-        if (activePanel === "team") {
-          onAction({ type: "join-team", sessionName: currentList[cursor].name });
-        } else {
-          onAction({ type: "resume", sessionName: currentList[cursor].name });
+      if (input === "k" && focusColumn === "sessions") {
+        // k in sessions column = kill
+        if (currentMaxItems > 0 && sessionCursor < mine.length) {
+          if (selected.size > 0) {
+            setDashMode({ mode: "confirm-bulk", sessionNames: [...selected] });
+          } else {
+            setDashMode({ mode: "confirm-end", sessionName: mine[sessionCursor].name });
+          }
         }
         return;
       }
-      // Space to toggle-select (mine panel only)
-      if (input === " " && activePanel === "mine" && maxItems > 0 && cursor < maxItems) {
-        const name = currentList[cursor].name;
+
+      // Left/Right: move between columns
+      if (key.leftArrow || key.rightArrow) {
+        if (layout === "narrow") {
+          // In narrow layout, left/right switch tabs
+          const idx = availableColumns.indexOf(focusColumn);
+          if (key.rightArrow) {
+            setFocusColumn(availableColumns[(idx + 1) % availableColumns.length]);
+          } else {
+            setFocusColumn(availableColumns[(idx - 1 + availableColumns.length) % availableColumns.length]);
+          }
+        } else {
+          const idx = availableColumns.indexOf(focusColumn);
+          if (key.rightArrow && idx < availableColumns.length - 1) {
+            setFocusColumn(availableColumns[idx + 1]);
+          } else if (key.leftArrow && idx > 0) {
+            setFocusColumn(availableColumns[idx - 1]);
+          }
+        }
+        return;
+      }
+
+      // Enter to select
+      if (key.return && currentMaxItems > 0 && currentCursor < currentMaxItems) {
+        if (focusColumn === "team") {
+          onAction({ type: "join-team", sessionName: team[teamCursor].name });
+        } else if (focusColumn === "repos") {
+          const repo = repos[repoCursor];
+          setRoute({ page: "repo-detail", repoPath: repo.path, repoName: repo.name });
+        } else {
+          onAction({ type: "resume", sessionName: mine[sessionCursor].name });
+        }
+        return;
+      }
+
+      // Space to toggle-select (sessions column only)
+      if (input === " " && focusColumn === "sessions" && mine.length > 0 && sessionCursor < mine.length) {
+        const name = mine[sessionCursor].name;
         setSelected((prev) => {
           const next = new Set(prev);
           if (next.has(name)) {
@@ -277,22 +367,9 @@ export function App({ machine, npdevUser, version, isOnVPS, onAction }: Props) {
         });
         return;
       }
-      // d to delete: bulk if selections exist, single otherwise
-      if (input === "d" && maxItems > 0 && cursor < maxItems) {
-        if (selected.size > 0) {
-          setDashMode({ mode: "confirm-bulk", sessionNames: [...selected] });
-        } else {
-          setDashMode({ mode: "confirm-end", sessionName: currentList[cursor].name });
-        }
-        return;
-      }
     }
 
     // Global shortcut keys (work in any cursor area)
-    if (input === "t") {
-      switchPanel();
-      return;
-    }
     const shortcut = buttons.find((b) => b.key === input);
     if (shortcut) {
       shortcut.action();
@@ -305,6 +382,34 @@ export function App({ machine, npdevUser, version, isOnVPS, onAction }: Props) {
       <NewSessionPage
         onSubmit={(name) => onAction({ type: "new-session", sessionName: name })}
         onBack={() => setRoute({ page: "dashboard" })}
+      />
+    );
+  }
+
+  // --- Route: New Session in Repo ---
+  if (route.page === "new-session-in-repo") {
+    const { repoPath, repoName } = route;
+    return (
+      <NewSessionPage
+        title={`NEW SESSION IN ${repoName.toUpperCase()}`}
+        onSubmit={(name) => onAction({ type: "new-session-in-repo", sessionName: name, repoPath })}
+        onBack={() => setRoute({ page: "repo-detail", repoPath, repoName })}
+      />
+    );
+  }
+
+  // --- Route: Repo Detail ---
+  if (route.page === "repo-detail") {
+    const { repoPath, repoName } = route;
+    const repo = repos.find(r => r.path === repoPath) || { path: repoPath, name: repoName, branch: "unknown" };
+    return (
+      <RepoDetailPage
+        machine={machine}
+        repo={repo}
+        sessions={sessions}
+        onAction={onAction}
+        onBack={() => setRoute({ page: "dashboard" })}
+        onNewSession={() => setRoute({ page: "new-session-in-repo", repoPath, repoName })}
       />
     );
   }
@@ -328,7 +433,6 @@ export function App({ machine, npdevUser, version, isOnVPS, onAction }: Props) {
   // --- Route: Dashboard ---
   const contentWidth = cols - 4;
   const isEmpty = mine.length === 0 && team.length === 0;
-  const activeTab = activePanel === "mine" ? ("sessions" as const) : ("team" as const);
 
   // Loading state
   if (loading) {
@@ -342,31 +446,37 @@ export function App({ machine, npdevUser, version, isOnVPS, onAction }: Props) {
           layout={layout}
           isOnVPS={isOnVPS}
         />
-        <Box paddingX={2} paddingY={1}>
-          <Spinner label="Loading sessions..." />
+        <Box flexDirection="column" flexGrow={1} paddingX={1}>
+          <SkeletonLoader cols={cols} rows={rows} />
         </Box>
       </Box>
     );
   }
 
-  const panelFocusedMine = cursorArea === "sessions" && activePanel === "mine";
-  const panelFocusedTeam = cursorArea === "sessions" && activePanel === "team";
+  const panelFocusedSessions = cursorArea === "sessions" && focusColumn === "sessions";
+  const panelFocusedRepos = cursorArea === "sessions" && focusColumn === "repos";
+  const panelFocusedTeam = cursorArea === "sessions" && focusColumn === "team";
 
-  const sessionPanels = isEmpty ? (
+  // Determine number of visible columns for wide layout
+  const visibleColumnCount = 1 + (hasRepos ? 1 : 0) + (hasTeam ? 1 : 0);
+
+  const sessionPanels = isEmpty && !hasRepos ? (
     <Box flexGrow={1} paddingY={1}>
       <EmptyState />
     </Box>
   ) : layout === "wide" ? (
+    // Wide layout: up to 3 columns side by side
     <Box flexDirection="row" gap={2} flexGrow={1}>
       {mine.length > 0 ? (
         <SessionList
           sessions={mine}
-          selectedIndex={activePanel === "mine" ? cursor : -1}
-          selectable={panelFocusedMine}
-          focused={panelFocusedMine}
+          repos={repos}
+          selectedIndex={focusColumn === "sessions" ? sessionCursor : -1}
+          selectable={panelFocusedSessions}
+          focused={panelFocusedSessions}
           layout={layout}
-          width={Math.floor(contentWidth / 2) - 2}
-          scrollOffset={activePanel === "mine" ? scrollOffset : 0}
+          width={Math.floor(contentWidth / visibleColumnCount) - 2}
+          scrollOffset={focusColumn === "sessions" ? sessionScrollOffset : 0}
           maxVisible={maxVisible}
           selected={selected}
         />
@@ -375,45 +485,131 @@ export function App({ machine, npdevUser, version, isOnVPS, onAction }: Props) {
           <EmptyState />
         </Box>
       )}
-      {team.length > 0 && (
+      {hasRepos && (
+        <RepoList
+          repos={repos}
+          sessions={sessions}
+          selectedIndex={repoCursor}
+          focused={panelFocusedRepos}
+          width={Math.floor(contentWidth / visibleColumnCount) - 2}
+          scrollOffset={repoScrollOffset}
+          maxVisible={maxVisible}
+        />
+      )}
+      {hasTeam && (
         <TeamSection
           sessions={team}
-          selectedIndex={activePanel === "team" ? cursor : -1}
+          repos={repos}
+          selectedIndex={focusColumn === "team" ? teamCursor : -1}
           selectable={panelFocusedTeam}
           focused={panelFocusedTeam}
           layout={layout}
+          width={Math.floor(contentWidth / visibleColumnCount) - 2}
+          scrollOffset={focusColumn === "team" ? teamScrollOffset : 0}
+          maxVisible={maxVisible}
+        />
+      )}
+    </Box>
+  ) : layout === "normal" ? (
+    // Normal layout: 2 columns — [Sessions/Team stacked] [Repos]
+    <Box flexDirection="row" gap={2} flexGrow={1}>
+      <Box flexDirection="column" flexGrow={1}>
+        {mine.length > 0 ? (
+          <SessionList
+            sessions={mine}
+            repos={repos}
+            selectedIndex={focusColumn === "sessions" ? sessionCursor : -1}
+            selectable={panelFocusedSessions}
+            focused={panelFocusedSessions}
+            layout={layout}
+            width={hasRepos ? Math.floor(contentWidth / 2) - 2 : contentWidth}
+            scrollOffset={sessionScrollOffset}
+            maxVisible={hasTeam ? Math.max(2, Math.floor(maxVisible / 2)) : maxVisible}
+            selected={selected}
+          />
+        ) : (
+          <Box flexGrow={1} paddingY={1}>
+            <EmptyState />
+          </Box>
+        )}
+        {hasTeam && (
+          <TeamSection
+            sessions={team}
+            repos={repos}
+            selectedIndex={focusColumn === "team" ? teamCursor : -1}
+            selectable={panelFocusedTeam}
+            focused={panelFocusedTeam}
+            layout={layout}
+            width={hasRepos ? Math.floor(contentWidth / 2) - 2 : contentWidth}
+            scrollOffset={teamScrollOffset}
+            maxVisible={Math.max(2, Math.floor(maxVisible / 2))}
+          />
+        )}
+      </Box>
+      {hasRepos && (
+        <RepoList
+          repos={repos}
+          sessions={sessions}
+          selectedIndex={repoCursor}
+          focused={panelFocusedRepos}
           width={Math.floor(contentWidth / 2) - 2}
-          scrollOffset={activePanel === "team" ? scrollOffset : 0}
+          scrollOffset={repoScrollOffset}
           maxVisible={maxVisible}
         />
       )}
     </Box>
   ) : (
+    // Narrow layout: tabs
     <Box flexDirection="column" flexGrow={1}>
-      <TabBar activeTab={activeTab} sessionCount={mine.length} teamCount={team.length} />
-      {activePanel === "mine" ? (
-        <SessionList
-          sessions={mine}
-          selectedIndex={cursorArea === "sessions" ? cursor : -1}
-          selectable={cursorArea === "sessions"}
-          focused={panelFocusedMine}
-          layout={layout}
-          width={contentWidth}
-          scrollOffset={scrollOffset}
-          maxVisible={maxVisible}
-          selected={selected}
-        />
-      ) : (
+      <TabBar
+        activeTab={narrowTab}
+        sessionCount={mine.length}
+        teamCount={team.length}
+        repoCount={repos.length}
+      />
+      {narrowTab === "sessions" ? (
+        mine.length > 0 ? (
+          <SessionList
+            sessions={mine}
+            repos={repos}
+            selectedIndex={cursorArea === "sessions" ? sessionCursor : -1}
+            selectable={panelFocusedSessions}
+            focused={panelFocusedSessions}
+            layout={layout}
+            width={contentWidth}
+            scrollOffset={sessionScrollOffset}
+            maxVisible={maxVisible}
+            selected={selected}
+          />
+        ) : (
+          <Box flexGrow={1} paddingY={1}>
+            <EmptyState />
+          </Box>
+        )
+      ) : narrowTab === "team" ? (
         <TeamSection
           sessions={team}
-          selectedIndex={cursorArea === "sessions" ? cursor : -1}
-          selectable={cursorArea === "sessions"}
+          repos={repos}
+          selectedIndex={cursorArea === "sessions" ? teamCursor : -1}
+          selectable={panelFocusedTeam}
           focused={panelFocusedTeam}
           layout={layout}
           width={contentWidth}
-          scrollOffset={scrollOffset}
+          scrollOffset={teamScrollOffset}
           maxVisible={maxVisible}
         />
+      ) : (
+        hasRepos && (
+          <RepoList
+            repos={repos}
+            sessions={sessions}
+            selectedIndex={repoCursor}
+            focused={panelFocusedRepos}
+            width={contentWidth}
+            scrollOffset={repoScrollOffset}
+            maxVisible={maxVisible}
+          />
+        )
       )}
     </Box>
   );
@@ -452,7 +648,7 @@ export function App({ machine, npdevUser, version, isOnVPS, onAction }: Props) {
               ? "confirm-bulk"
               : "dashboard"
         }
-        activePanel={activePanel}
+        focusColumn={focusColumn}
         staleCount={stale.length}
         sessionCount={mine.length + team.length}
         confirmEndName={confirmEndName}

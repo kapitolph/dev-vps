@@ -1,11 +1,13 @@
 import { Box, Text } from "ink";
-import type { SessionData } from "../../../types";
+import { deriveRepoName } from "../../../lib/sessions";
+import type { RepoData, SessionData } from "../../../types";
 import { useTheme } from "../context/ThemeContext";
 import type { Layout } from "../hooks/useTerminalSize";
 import { SessionRow } from "./SessionRow";
 
 interface Props {
   sessions: SessionData[];
+  repos: RepoData[];
   selectedIndex: number;
   selectable: boolean;
   layout: Layout;
@@ -18,6 +20,7 @@ interface Props {
 
 export function SessionList({
   sessions,
+  repos,
   selectedIndex,
   selectable,
   layout,
@@ -46,8 +49,8 @@ export function SessionList({
       borderColor={focused ? theme.panelBorderFocused : theme.panelBorder}
       paddingLeft={1}
     >
-      <Box paddingBottom={1}>
-        <Text color={focused ? theme.accent : theme.overlay1}>Sessions</Text>
+      <Box paddingTop={1} paddingBottom={1}>
+        <Text bold color={focused ? theme.accent : theme.overlay1}>Sessions</Text>
         <Text color={theme.overlay0}> ({sessions.length})</Text>
         {selected && selected.size > 0 && (
           <Text color={theme.yellow}> · {selected.size} selected</Text>
@@ -60,6 +63,7 @@ export function SessionList({
           session={s}
           isSelected={selectable && scrollOffset + i === selectedIndex}
           isMarked={selected?.has(s.name)}
+          repoName={deriveRepoName(s, repos)}
           layout={layout}
           width={width}
         />

@@ -2,9 +2,11 @@ import { Box, Text } from "ink";
 import type React from "react";
 import { useTheme } from "../context/ThemeContext";
 
+type FocusColumn = "sessions" | "repos" | "team";
+
 interface Props {
   mode: string;
-  activePanel: "mine" | "team";
+  focusColumn: FocusColumn;
   staleCount: number;
   sessionCount: number;
   confirmEndName?: string;
@@ -15,7 +17,7 @@ interface Props {
 
 export function StatusLine({
   mode,
-  activePanel,
+  focusColumn,
   staleCount,
   sessionCount,
   confirmEndName,
@@ -31,8 +33,8 @@ export function StatusLine({
     const nameList = confirmBulkNames.join(", ");
     const shortEnough = nameList.length < cols - 30;
     const label = shortEnough
-      ? `End ${confirmBulkNames.length} session${confirmBulkNames.length > 1 ? "s" : ""} (${nameList})?`
-      : `End ${confirmBulkNames.length} session${confirmBulkNames.length > 1 ? "s" : ""}?`;
+      ? `Kill ${confirmBulkNames.length} session${confirmBulkNames.length > 1 ? "s" : ""} (${nameList})?`
+      : `Kill ${confirmBulkNames.length} session${confirmBulkNames.length > 1 ? "s" : ""}?`;
     content = (
       <Text>
         <Text color={theme.yellow}>{label} </Text>
@@ -49,7 +51,7 @@ export function StatusLine({
   } else if (confirmEndName) {
     content = (
       <Text>
-        <Text color={theme.yellow}>End '{confirmEndName}'? </Text>
+        <Text color={theme.yellow}>Kill '{confirmEndName}'? </Text>
         <Text color={theme.accent} bold>
           [y]
         </Text>
@@ -62,10 +64,16 @@ export function StatusLine({
     );
   } else if (mode === "new-session") {
     content = <Text color={theme.overlay1}>Enter to confirm · Esc to cancel</Text>;
-  } else if (activePanel === "team") {
+  } else if (focusColumn === "repos") {
     content = (
       <Text color={theme.overlay1}>
-        Viewing team sessions · <Text color={theme.accent}>t</Text> to switch back
+        {"\u2191\u2193"} navigate · {"\u21B5"} details · tab cycle
+      </Text>
+    );
+  } else if (focusColumn === "team") {
+    content = (
+      <Text color={theme.overlay1}>
+        Viewing team sessions · tab to cycle
       </Text>
     );
   } else if (selectionCount > 0) {
@@ -75,8 +83,8 @@ export function StatusLine({
           {selectionCount} selected
         </Text>
         <Text color={theme.overlay1}> · </Text>
-        <Text color={theme.accent}>d</Text>
-        <Text color={theme.overlay1}> delete · </Text>
+        <Text color={theme.accent}>k</Text>
+        <Text color={theme.overlay1}> kill · </Text>
         <Text color={theme.accent}>esc</Text>
         <Text color={theme.overlay1}> clear</Text>
       </Text>
@@ -85,7 +93,7 @@ export function StatusLine({
     content = (
       <Text>
         <Text color={theme.yellow}>
-          ⚠ {staleCount} stale session{staleCount > 1 ? "s" : ""}
+          {"\u26A0"} {staleCount} stale session{staleCount > 1 ? "s" : ""}
         </Text>
         <Text color={theme.overlay1}> · </Text>
         <Text color={theme.accent}>c</Text>
@@ -95,7 +103,7 @@ export function StatusLine({
   } else {
     content = (
       <Text color={theme.overlay1}>
-        {sessionCount > 0 ? `↑↓ navigate · ←→ panels · ↵ select · d end` : `n new session · q quit`}
+        {sessionCount > 0 ? `\u2191\u2193 navigate · \u2190\u2192 panels · \u21B5 select · k kill` : `n new session · q quit`}
       </Text>
     );
   }

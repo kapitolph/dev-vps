@@ -11,11 +11,12 @@ interface Props {
   isMarked?: boolean;
   showOwner?: boolean;
   ownerLabel?: string;
+  repoName?: string;
   layout: Layout;
   width: number;
 }
 
-export function SessionRow({ session, isSelected, isMarked, showOwner, ownerLabel, layout, width }: Props) {
+export function SessionRow({ session, isSelected, isMarked, showOwner, ownerLabel, repoName, layout, width }: Props) {
   const theme = useTheme();
   const count = parseInt(session.client_count || "0", 10);
   const isStale = businessDaysElapsed(session.last_activity) > STALE_BUSINESS_DAYS;
@@ -60,6 +61,8 @@ export function SessionRow({ session, isSelected, isMarked, showOwner, ownerLabe
           <Text color={ownerIsAttached ? theme.green : theme.overlay1}> {ownerLabel}</Text>
         )}
         <Spacer />
+        <Text color={theme.overlay0}> {repoName || "No project"}</Text>
+        <Text> </Text>
         <Text color={isStale ? theme.yellow : theme.overlay1}>
           {relativeTime(session.last_activity)}
         </Text>

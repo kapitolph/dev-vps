@@ -5,11 +5,12 @@ import { useTerminalSize } from "../hooks/useTerminalSize";
 import { BRAND_BLUE } from "../theme";
 
 interface Props {
+  title?: string;
   onSubmit: (name: string) => void;
   onBack: () => void;
 }
 
-export function NewSessionPage({ onSubmit, onBack }: Props) {
+export function NewSessionPage({ title, onSubmit, onBack }: Props) {
   const theme = useTheme();
   const { cols, rows } = useTerminalSize();
   const [value, setValue] = useState("");
@@ -52,7 +53,7 @@ export function NewSessionPage({ onSubmit, onBack }: Props) {
       {/* Center content */}
       <Box flexDirection="column" alignItems="center">
         <Text color={theme.overlay0} dimColor>
-          NEW SESSION
+          {title || "NEW SESSION"}
         </Text>
         <Text> </Text>
 

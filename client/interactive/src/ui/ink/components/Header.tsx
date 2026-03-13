@@ -42,9 +42,12 @@ export function Header({ machineName, npdevUser, version, cols, layout, isOnVPS 
         <Text color={theme.overlay0}>·</Text>
         <Text color={theme.overlay1}>v{version.current}</Text>
         {version.latest && (
-          <Text backgroundColor={theme.yellow} color={theme.base} bold>
-            {" ↑ "}
-          </Text>
+          <>
+            <Text backgroundColor={theme.yellow} color={theme.base} bold>
+              {" \u2191 "}
+            </Text>
+            <Text color={theme.yellow}> Update available</Text>
+          </>
         )}
       </Box>
     </Box>
