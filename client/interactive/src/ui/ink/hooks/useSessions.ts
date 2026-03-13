@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { activityAge, fetchSessions } from "../../../lib/sessions";
+import { businessDaysElapsed, fetchSessions, STALE_BUSINESS_DAYS } from "../../../lib/sessions";
 import type { Machine, SessionData } from "../../../types";
 
 interface UseSessionsResult {
@@ -34,7 +34,7 @@ export function useSessions(machine: Machine, npdevUser: string): UseSessionsRes
     .filter((s) => s.owner !== npdevUser)
     .sort((a, b) => parseInt(b.last_activity, 10) - parseInt(a.last_activity, 10));
 
-  const stale = mine.filter((s) => activityAge(s.last_activity) > 3 * 86400);
+  const stale = mine.filter((s) => businessDaysElapsed(s.last_activity) > STALE_BUSINESS_DAYS);
 
   return { sessions, mine, team, stale, loading, refresh: load };
 }

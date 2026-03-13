@@ -24,3 +24,22 @@ export function activityAge(epoch: string): number {
   if (!epoch) return Infinity;
   return Math.floor(Date.now() / 1000) - parseInt(epoch, 10);
 }
+
+export const STALE_BUSINESS_DAYS = 3;
+
+export function businessDaysElapsed(epoch: string): number {
+  if (!epoch) return Infinity;
+  const lastActive = new Date(parseInt(epoch, 10) * 1000);
+  const now = new Date();
+  const start = new Date(lastActive.getFullYear(), lastActive.getMonth(), lastActive.getDate());
+  const end = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  let count = 0;
+  const cursor = new Date(start);
+  cursor.setDate(cursor.getDate() + 1);
+  while (cursor <= end) {
+    const day = cursor.getDay();
+    if (day !== 0 && day !== 6) count++;
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return count;
+}

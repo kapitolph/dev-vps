@@ -7,8 +7,9 @@ interface Props {
   activePanel: "mine" | "team";
   staleCount: number;
   sessionCount: number;
-  confirmStale?: boolean;
   confirmEndName?: string;
+  confirmBulkNames?: string[];
+  selectionCount?: number;
   cols: number;
 }
 
@@ -17,18 +18,24 @@ export function StatusLine({
   activePanel,
   staleCount,
   sessionCount,
-  confirmStale,
   confirmEndName,
+  confirmBulkNames,
+  selectionCount = 0,
   cols,
 }: Props) {
   const theme = useTheme();
 
   let content: React.ReactNode;
 
-  if (confirmEndName) {
+  if (confirmBulkNames && confirmBulkNames.length > 0) {
+    const nameList = confirmBulkNames.join(", ");
+    const shortEnough = nameList.length < cols - 30;
+    const label = shortEnough
+      ? `End ${confirmBulkNames.length} session${confirmBulkNames.length > 1 ? "s" : ""} (${nameList})?`
+      : `End ${confirmBulkNames.length} session${confirmBulkNames.length > 1 ? "s" : ""}?`;
     content = (
       <Text>
-        <Text color={theme.yellow}>End '{confirmEndName}'? </Text>
+        <Text color={theme.yellow}>{label} </Text>
         <Text color={theme.accent} bold>
           [y]
         </Text>
@@ -39,12 +46,10 @@ export function StatusLine({
         <Text color={theme.subtext0}> no</Text>
       </Text>
     );
-  } else if (confirmStale) {
+  } else if (confirmEndName) {
     content = (
       <Text>
-        <Text color={theme.yellow}>
-          End {staleCount} stale session{staleCount > 1 ? "s" : ""}?{" "}
-        </Text>
+        <Text color={theme.yellow}>End '{confirmEndName}'? </Text>
         <Text color={theme.accent} bold>
           [y]
         </Text>
@@ -61,6 +66,19 @@ export function StatusLine({
     content = (
       <Text color={theme.overlay1}>
         Viewing team sessions · <Text color={theme.accent}>t</Text> to switch back
+      </Text>
+    );
+  } else if (selectionCount > 0) {
+    content = (
+      <Text>
+        <Text color={theme.yellow}>
+          {selectionCount} selected
+        </Text>
+        <Text color={theme.overlay1}> · </Text>
+        <Text color={theme.accent}>d</Text>
+        <Text color={theme.overlay1}> delete · </Text>
+        <Text color={theme.accent}>esc</Text>
+        <Text color={theme.overlay1}> clear</Text>
       </Text>
     );
   } else if (staleCount > 0) {

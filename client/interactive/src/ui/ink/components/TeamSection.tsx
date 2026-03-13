@@ -28,29 +28,9 @@ export function TeamSection({
   const theme = useTheme();
   if (sessions.length === 0) return null;
 
-  // Group by owner
-  const byOwner = new Map<string, SessionData[]>();
-  for (const s of sessions) {
-    if (!byOwner.has(s.owner)) byOwner.set(s.owner, []);
-    byOwner.get(s.owner)!.push(s);
-  }
-
-  // Build flat list with owner labels
-  const rows: { session: SessionData; ownerLabel?: string; flatIndex: number }[] = [];
-  let flatIndex = 0;
-  for (const [owner, ownerSessions] of byOwner) {
-    for (let i = 0; i < ownerSessions.length; i++) {
-      rows.push({
-        session: ownerSessions[i],
-        ownerLabel: i === 0 ? owner : "",
-        flatIndex: flatIndex++,
-      });
-    }
-  }
-
-  const visibleRows = rows.slice(scrollOffset, scrollOffset + maxVisible);
+  const visibleSessions = sessions.slice(scrollOffset, scrollOffset + maxVisible);
   const aboveCount = scrollOffset;
-  const belowCount = Math.max(0, rows.length - scrollOffset - maxVisible);
+  const belowCount = Math.max(0, sessions.length - scrollOffset - maxVisible);
 
   return (
     <Box
@@ -70,13 +50,13 @@ export function TeamSection({
         <Text color={theme.overlay0}> ({sessions.length})</Text>
       </Box>
       {aboveCount > 0 && <Text color={theme.overlay1}> ↑ {aboveCount} more</Text>}
-      {visibleRows.map((row) => (
+      {visibleSessions.map((s, i) => (
         <SessionRow
-          key={row.session.name}
-          session={row.session}
-          isSelected={selectable && row.flatIndex === selectedIndex}
+          key={s.name}
+          session={s}
+          isSelected={selectable && scrollOffset + i === selectedIndex}
           showOwner
-          ownerLabel={row.ownerLabel}
+          ownerLabel={s.owner}
           layout={layout}
           width={width}
         />

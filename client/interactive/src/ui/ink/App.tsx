@@ -10,6 +10,7 @@ import { NewSessionPage } from "./components/NewSessionPage";
 import { SessionList } from "./components/SessionList";
 import { SetupPage } from "./components/SetupPage";
 import { Spinner } from "./components/Spinner";
+import { StaleNudge } from "./components/StaleNudge";
 import { StatusLine } from "./components/StatusLine";
 import { TabBar } from "./components/TabBar";
 import { TeamSection } from "./components/TeamSection";
@@ -26,8 +27,8 @@ type Route =
 
 type DashboardMode =
   | { mode: "normal" }
-  | { mode: "confirm-stale" }
-  | { mode: "confirm-end"; sessionName: string };
+  | { mode: "confirm-end"; sessionName: string }
+  | { mode: "confirm-bulk"; sessionNames: string[] };
 
 export type AppAction =
   | { type: "resume"; sessionName: string }
@@ -56,6 +57,8 @@ export function App({ machine, npdevUser, version, isOnVPS, onAction }: Props) {
   const [cursor, setCursor] = useState(0);
   const [focusedButton, setFocusedButton] = useState(0);
   const [scrollOffset, setScrollOffset] = useState(0);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [showStaleNudge, setShowStaleNudge] = useState(true);
 
   // Current list based on active panel
   const currentList = activePanel === "mine" ? mine : team;
@@ -93,6 +96,14 @@ export function App({ machine, npdevUser, version, isOnVPS, onAction }: Props) {
     });
   }, [maxItems, maxVisible]);
 
+  // Auto-dismiss stale nudge after 5s
+  useEffect(() => {
+    if (stale.length > 0 && !loading && showStaleNudge) {
+      const timer = setTimeout(() => setShowStaleNudge(false), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [stale.length, loading, showStaleNudge]);
+
   const switchPanel = useCallback(() => {
     setActivePanel((p) => {
       const next = p === "mine" ? "team" : "mine";
@@ -101,7 +112,13 @@ export function App({ machine, npdevUser, version, isOnVPS, onAction }: Props) {
     });
     setCursor(0);
     setScrollOffset(0);
+    setSelected(new Set());
   }, [team.length]);
+
+  const doRefresh = useCallback(() => {
+    setSelected(new Set());
+    refresh();
+  }, [refresh]);
 
   const endSession = useCallback(
     async (name: string) => {
@@ -123,11 +140,14 @@ export function App({ machine, npdevUser, version, isOnVPS, onAction }: Props) {
           {
             key: "c",
             label: `Clean ${stale.length}`,
-            action: () => setDashMode({ mode: "confirm-stale" }),
+            action: () => {
+              setSelected(new Set(stale.map((s) => s.name)));
+              setDashMode({ mode: "confirm-bulk", sessionNames: stale.map((s) => s.name) });
+            },
           },
         ]
       : []),
-    { key: "r", label: "Refresh", action: refresh },
+    { key: "r", label: "Refresh", action: doRefresh },
     ...(!isOnVPS
       ? [
           { key: "s", label: "Setup", action: () => setRoute({ page: "setup" }) },
@@ -151,15 +171,21 @@ export function App({ machine, npdevUser, version, isOnVPS, onAction }: Props) {
     if (route.page !== "dashboard") return;
     if (loading) return;
 
-    // Confirm stale cleanup
-    if (dashMode.mode === "confirm-stale") {
+    // Dismiss stale nudge on any keypress
+    if (showStaleNudge) setShowStaleNudge(false);
+
+    // Confirm bulk delete
+    if (dashMode.mode === "confirm-bulk") {
       if (input === "y" || input === "Y") {
+        const names = dashMode.sessionNames;
         setDashMode({ mode: "normal" });
-        Promise.all(stale.map((s) => endSession(s.name))).catch(() => {});
+        setSelected(new Set());
+        Promise.all(names.map((n) => endSession(n))).catch(() => {});
         return;
       }
       if (key.escape || input === "n" || input === "N") {
         setDashMode({ mode: "normal" });
+        setSelected(new Set());
       }
       return;
     }
@@ -178,8 +204,12 @@ export function App({ machine, npdevUser, version, isOnVPS, onAction }: Props) {
       return;
     }
 
-    // Escape in dashboard → exit
+    // Escape: clear selections if any, otherwise exit
     if (key.escape) {
+      if (selected.size > 0) {
+        setSelected(new Set());
+        return;
+      }
       onAction({ type: "exit" });
       return;
     }
@@ -233,9 +263,27 @@ export function App({ machine, npdevUser, version, isOnVPS, onAction }: Props) {
         }
         return;
       }
-      // d to end session
+      // Space to toggle-select (mine panel only)
+      if (input === " " && activePanel === "mine" && maxItems > 0 && cursor < maxItems) {
+        const name = currentList[cursor].name;
+        setSelected((prev) => {
+          const next = new Set(prev);
+          if (next.has(name)) {
+            next.delete(name);
+          } else {
+            next.add(name);
+          }
+          return next;
+        });
+        return;
+      }
+      // d to delete: bulk if selections exist, single otherwise
       if (input === "d" && maxItems > 0 && cursor < maxItems) {
-        setDashMode({ mode: "confirm-end", sessionName: currentList[cursor].name });
+        if (selected.size > 0) {
+          setDashMode({ mode: "confirm-bulk", sessionNames: [...selected] });
+        } else {
+          setDashMode({ mode: "confirm-end", sessionName: currentList[cursor].name });
+        }
         return;
       }
     }
@@ -320,6 +368,7 @@ export function App({ machine, npdevUser, version, isOnVPS, onAction }: Props) {
           width={Math.floor(contentWidth / 2) - 2}
           scrollOffset={activePanel === "mine" ? scrollOffset : 0}
           maxVisible={maxVisible}
+          selected={selected}
         />
       ) : (
         <Box flexGrow={1} paddingY={1}>
@@ -352,6 +401,7 @@ export function App({ machine, npdevUser, version, isOnVPS, onAction }: Props) {
           width={contentWidth}
           scrollOffset={scrollOffset}
           maxVisible={maxVisible}
+          selected={selected}
         />
       ) : (
         <TeamSection
@@ -369,6 +419,7 @@ export function App({ machine, npdevUser, version, isOnVPS, onAction }: Props) {
   );
 
   const confirmEndName = dashMode.mode === "confirm-end" ? dashMode.sessionName : undefined;
+  const confirmBulkNames = dashMode.mode === "confirm-bulk" ? dashMode.sessionNames : undefined;
 
   return (
     <Box flexDirection="column" width={cols} height={rows} backgroundColor={theme.screenBg}>
@@ -387,22 +438,26 @@ export function App({ machine, npdevUser, version, isOnVPS, onAction }: Props) {
           isFocusZone={cursorArea === "actions"}
         />
       </Box>
+      {showStaleNudge && stale.length > 0 && (
+        <StaleNudge count={stale.length} />
+      )}
       <Box flexDirection="column" flexGrow={1} paddingX={1}>
         {sessionPanels}
       </Box>
       <StatusLine
         mode={
-          dashMode.mode === "confirm-stale"
-            ? "confirm-stale"
-            : dashMode.mode === "confirm-end"
-              ? "confirm-end"
+          dashMode.mode === "confirm-end"
+            ? "confirm-end"
+            : dashMode.mode === "confirm-bulk"
+              ? "confirm-bulk"
               : "dashboard"
         }
         activePanel={activePanel}
         staleCount={stale.length}
         sessionCount={mine.length + team.length}
-        confirmStale={dashMode.mode === "confirm-stale"}
         confirmEndName={confirmEndName}
+        confirmBulkNames={confirmBulkNames}
+        selectionCount={selected.size}
         cols={cols}
       />
     </Box>

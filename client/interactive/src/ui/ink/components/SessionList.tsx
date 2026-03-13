@@ -13,6 +13,7 @@ interface Props {
   scrollOffset: number;
   maxVisible: number;
   focused?: boolean;
+  selected?: Set<string>;
 }
 
 export function SessionList({
@@ -24,6 +25,7 @@ export function SessionList({
   scrollOffset,
   maxVisible,
   focused = false,
+  selected,
 }: Props) {
   const theme = useTheme();
   if (sessions.length === 0) return null;
@@ -47,6 +49,9 @@ export function SessionList({
       <Box paddingBottom={1}>
         <Text color={focused ? theme.accent : theme.overlay1}>Sessions</Text>
         <Text color={theme.overlay0}> ({sessions.length})</Text>
+        {selected && selected.size > 0 && (
+          <Text color={theme.yellow}> · {selected.size} selected</Text>
+        )}
       </Box>
       {aboveCount > 0 && <Text color={theme.overlay1}> ↑ {aboveCount} more</Text>}
       {visibleSessions.map((s, i) => (
@@ -54,6 +59,7 @@ export function SessionList({
           key={s.name}
           session={s}
           isSelected={selectable && scrollOffset + i === selectedIndex}
+          isMarked={selected?.has(s.name)}
           layout={layout}
           width={width}
         />
