@@ -12,7 +12,7 @@ export async function cmdStart(
     process.exit(1);
   }
 
-  const desc = description ?? "";
+  const desc = description || "(no description)";
   const cmd = `bash ~/.vps/session.sh start '${name}' 'shell' '${desc}' '${npdevUser}'`;
   const exitCode = await sshInteractive(machine, cmd);
   process.exit(exitCode);

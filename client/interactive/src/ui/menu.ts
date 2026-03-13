@@ -43,11 +43,11 @@ export async function mainMenu(machine: Machine, npdevUser: string, version: Ver
 
         const desc = await p.text({
           message: "Description (optional)",
-          defaultValue: "",
+          placeholder: "press enter to skip",
         });
         if (p.isCancel(desc)) break;
 
-        await cmdStart(machine, name, npdevUser, desc || undefined);
+        await cmdStart(machine, name, npdevUser, (desc as string) || "(no description)");
         break;
       }
       case "sessions":
