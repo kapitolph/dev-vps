@@ -1,6 +1,6 @@
 import * as p from "@clack/prompts";
 import { join } from "path";
-import { writeFile, chmod, mkdir } from "fs/promises";
+import { writeFile, chmod, mkdir, rename, unlink } from "fs/promises";
 import { MACHINES_FILE, npdevDir } from "../lib/config";
 const GITHUB_REPO = "kapitolph/npdev";
 
@@ -54,8 +54,13 @@ export async function cmdUpdate(): Promise<void> {
 
     const buffer = await resp.arrayBuffer();
     const execPath = process.execPath;
-    await writeFile(execPath, Buffer.from(buffer));
-    await chmod(execPath, 0o755);
+    const tmpPath = execPath + ".tmp";
+    // Write to temp file then atomically replace — overwriting a running
+    // binary in-place corrupts it on macOS (Mach-O is memory-mapped)
+    await writeFile(tmpPath, Buffer.from(buffer));
+    await chmod(tmpPath, 0o755);
+    try { await unlink(execPath); } catch {}
+    await rename(tmpPath, execPath);
     s.stop("npdev binary updated");
   } catch {
     s.stop("Failed to fetch binary (may not be released yet — using current version)");
