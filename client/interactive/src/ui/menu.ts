@@ -1,21 +1,25 @@
 import * as p from "@clack/prompts";
-import type { Machine } from "../types";
+import type { Machine, VersionInfo } from "../types";
 import { cmdSetup } from "../commands/setup";
 import { cmdUpdate } from "../commands/update";
 import { cmdStart } from "../commands/start";
-import { cmdList } from "../commands/list";
-import { cmdCleanup } from "../commands/cleanup";
+import { cmdSessions } from "../commands/sessions";
 
-export async function mainMenu(machine: Machine, npdevUser: string, machineOverride?: string): Promise<void> {
+export async function mainMenu(machine: Machine, npdevUser: string, version: VersionInfo, machineOverride?: string): Promise<void> {
+  const hasUpdate = version.latest && version.latest !== version.current;
+
   while (true) {
+    const updateHint = hasUpdate
+      ? `new version available: v${version.latest}`
+      : "fetch latest npdev + machines";
+
     const action = await p.select({
       message: "What would you like to do?",
       options: [
         { value: "new-session", label: "New session", hint: "create or attach to a named tmux session" },
-        { value: "list", label: "List sessions", hint: "show active sessions on VPS" },
-        { value: "cleanup", label: "Cleanup sessions", hint: "interactively end old sessions" },
+        { value: "sessions", label: "Sessions", hint: "view, join, or end sessions" },
         { value: "setup", label: "Setup", hint: "configure developer identity" },
-        { value: "update", label: "Update", hint: "fetch latest npdev + machines" },
+        { value: "update", label: hasUpdate ? "Update (new version available!)" : "Update", hint: updateHint },
         { value: "exit", label: "Exit" },
       ],
     });
@@ -46,13 +50,8 @@ export async function mainMenu(machine: Machine, npdevUser: string, machineOverr
         await cmdStart(machine, name, npdevUser, desc || undefined);
         break;
       }
-      case "list":
-        await cmdList(machine);
-        console.log();
-        break;
-      case "cleanup":
-        await cmdCleanup(machine, npdevUser);
-        console.log();
+      case "sessions":
+        await cmdSessions(machine, npdevUser);
         break;
       case "setup":
         await cmdSetup(machineOverride);

@@ -6,7 +6,7 @@ import { mainMenu } from "./ui/menu";
 import { cmdStart } from "./commands/start";
 import { cmdEnd } from "./commands/end";
 import { cmdShell } from "./commands/shell";
-import { cmdList } from "./commands/list";
+import { cmdSessions, fetchSessions } from "./commands/sessions";
 import { cmdSetup } from "./commands/setup";
 import { cmdUpdate } from "./commands/update";
 import { cmdSyncKeys } from "./commands/sync-keys";
@@ -104,7 +104,7 @@ async function main(): Promise<void> {
       }
 
       const machine = await selectMachine(machineOverride);
-      await mainMenu(machine, npdevUser, machineOverride);
+      await mainMenu(machine, npdevUser, version, machineOverride);
     } else {
       // Non-TTY: quick shell (preserves bash behavior)
       if (!npdevUser) { console.error("Developer identity not set. Run: npdev setup"); process.exit(1); }
@@ -116,7 +116,15 @@ async function main(): Promise<void> {
 
   if (command === "list") {
     const machine = await selectMachine(machineOverride);
-    await cmdList(machine);
+    const npUser = npdevUser || "unknown";
+    if (process.stdin.isTTY) {
+      await cmdSessions(machine, npUser);
+    } else {
+      // Non-interactive: just print table via ssh (legacy behavior)
+      const { sshExec } = await import("./lib/ssh");
+      const { stdout } = await sshExec(machine, "bash ~/.vps/session.sh list");
+      if (stdout) console.log(stdout);
+    }
     process.exit(0);
   }
 
