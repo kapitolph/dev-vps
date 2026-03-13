@@ -46,15 +46,20 @@ export async function checkVersion(): Promise<VersionInfo> {
 
 async function fetchLatestVersion(cacheFile: string, now: number): Promise<string | null> {
   try {
+    // Use GitHub API to get latest release tag (not source file) to avoid
+    // race with CI: source shows pre-bump version until CI commits the bump
     const resp = await fetch(
-      `https://raw.githubusercontent.com/${GITHUB_REPO}/main/client/interactive/src/lib/version.ts`,
-      { signal: AbortSignal.timeout(3000) }
+      `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`,
+      {
+        signal: AbortSignal.timeout(3000),
+        headers: { Accept: "application/vnd.github+json" },
+      }
     );
     if (!resp.ok) return null;
-    const text = await resp.text();
-    const match = text.match(/NPDEV_VERSION\s*=\s*"([^"]+)"/);
-    if (!match) return null;
-    const latest = match[1];
+    const data = await resp.json() as { tag_name?: string };
+    const tag = data.tag_name;
+    if (!tag) return null;
+    const latest = tag.replace(/^v/, "");
     await mkdir(npdevDir(), { recursive: true });
     await writeFile(cacheFile, `${now}\n${latest}\n`);
     return latest;

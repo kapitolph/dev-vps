@@ -25,17 +25,19 @@ export async function cmdUpdate(): Promise<void> {
     process.exit(1);
   }
 
-  // Fetch latest version from source
+  // Fetch latest version from GitHub releases
   let newVersion = "unknown";
   try {
     const vResp = await fetch(
-      `https://raw.githubusercontent.com/${GITHUB_REPO}/main/client/interactive/src/lib/version.ts`,
-      { signal: AbortSignal.timeout(3000) }
+      `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`,
+      {
+        signal: AbortSignal.timeout(3000),
+        headers: { Accept: "application/vnd.github+json" },
+      }
     );
     if (vResp.ok) {
-      const text = await vResp.text();
-      const match = text.match(/NPDEV_VERSION\s*=\s*"([^"]+)"/);
-      if (match) newVersion = match[1];
+      const data = await vResp.json() as { tag_name?: string };
+      if (data.tag_name) newVersion = data.tag_name.replace(/^v/, "");
     }
   } catch {
     // continue with "unknown"
