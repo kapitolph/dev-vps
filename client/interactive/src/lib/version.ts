@@ -38,26 +38,27 @@ export async function checkVersion(): Promise<VersionInfo> {
     // No cache
   }
 
-  // Background fetch — don't block
-  fetchLatestVersion(cacheFile, now).catch(() => {});
-
-  return { current: NPDEV_VERSION, latest };
+  // Fetch and wait (with timeout so it doesn't hang)
+  const fetched = await fetchLatestVersion(cacheFile, now);
+  const effective = fetched && isNewer(fetched, NPDEV_VERSION) ? fetched : null;
+  return { current: NPDEV_VERSION, latest: effective };
 }
 
-async function fetchLatestVersion(cacheFile: string, now: number): Promise<void> {
+async function fetchLatestVersion(cacheFile: string, now: number): Promise<string | null> {
   try {
     const resp = await fetch(
       `https://raw.githubusercontent.com/${GITHUB_REPO}/main/client/interactive/src/lib/version.ts`,
       { signal: AbortSignal.timeout(3000) }
     );
-    if (!resp.ok) return;
+    if (!resp.ok) return null;
     const text = await resp.text();
     const match = text.match(/NPDEV_VERSION\s*=\s*"([^"]+)"/);
-    if (!match) return;
+    if (!match) return null;
     const latest = match[1];
     await mkdir(npdevDir(), { recursive: true });
     await writeFile(cacheFile, `${now}\n${latest}\n`);
+    return latest;
   } catch {
-    // Silently fail
+    return null;
   }
 }
