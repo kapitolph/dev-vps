@@ -193,6 +193,14 @@ cmd_list() {
 cmd_reconcile() {
   local quiet="${1:-}"
   local changed=0
+
+  # Backfill missing owner fields (entries created before owner was added)
+  # Inserts "owner: unknown" before status lines not preceded by owner lines
+  awk '
+    /status:/ && prev !~ /owner:/ { print "    owner: unknown" }
+    { prev = $0; print }
+  ' "$REGISTRY" > "${REGISTRY}.tmp" && mv "${REGISTRY}.tmp" "$REGISTRY"
+
   local active_names
   active_names=$(awk '
     /^  - name:/ { name = $3 }
@@ -205,6 +213,33 @@ cmd_reconcile() {
       registry_end "$sname"
       changed=1
       [[ "$quiet" != "quiet" ]] && echo "Reconciled stale session: $sname" || true
+    else
+      # Recover owner from running session's process environment if registry has "unknown"
+      local current_owner
+      current_owner=$(awk -v name="$sname" '
+        /^  - name:/ { n = $3 }
+        n == name && /owner:/ { print $2; exit }
+      ' "$REGISTRY")
+      if [[ "$current_owner" == "unknown" ]]; then
+        local pid child target real_owner=""
+        pid=$(tmux -f "$TMUX_CONF" list-panes -t "$sname" -F '#{pane_pid}' 2>/dev/null | head -1) || true
+        if [[ -n "$pid" ]]; then
+          child=$(pgrep -P "$pid" 2>/dev/null | head -1) || true
+          target=${child:-$pid}
+          real_owner=$(tr '\0' '\n' < /proc/"$target"/environ 2>/dev/null | sed -n 's/^GIT_AUTHOR_NAME=//p' | head -1) || true
+        fi
+        if [[ -n "$real_owner" ]]; then
+          # Lowercase the owner name to match npdev user convention
+          real_owner=$(echo "$real_owner" | tr '[:upper:]' '[:lower:]')
+          awk -v name="$sname" -v owner="$real_owner" '
+            /^  - name:/ { current = $3 }
+            current == name && /owner: unknown/ { sub(/owner: unknown/, "owner: " owner) }
+            { print }
+          ' "$REGISTRY" > "${REGISTRY}.tmp" && mv "${REGISTRY}.tmp" "$REGISTRY"
+          changed=1
+          [[ "$quiet" != "quiet" ]] && echo "Recovered owner for '$sname': $real_owner" || true
+        fi
+      fi
     fi
   done
 

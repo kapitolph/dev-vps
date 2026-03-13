@@ -42,7 +42,11 @@ function printTable(sessions: SessionData[]): void {
   );
   console.log(chalk.dim("  " + "─".repeat(76)));
 
-  for (const s of sessions) {
+  const sorted = [...sessions].sort(
+    (a, b) => (parseInt(b.last_activity, 10) || 0) - (parseInt(a.last_activity, 10) || 0)
+  );
+
+  for (const s of sorted) {
     const age = activityAge(s.last_activity);
     const stale = age > 3 * 86400;
     const nameStr = stale ? chalk.yellow(s.name.padEnd(20)) : chalk.cyan(s.name.padEnd(20));
