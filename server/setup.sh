@@ -319,7 +319,37 @@ chmod +x "$VPS_DIR/hooks/notify-attach.sh"
 chown -R "$SHARED_USER:$SHARED_GROUP" "$VPS_DIR/hooks"
 ok "Tmux notification hooks installed"
 
-# ─── Step 15: Configure dev user's shell PATH ────────────────────────────────
+# ─── Step 15: Install npdev CLI on VPS ───────────────────────────────────────
+info "Installing npdev CLI on VPS..."
+
+NPDEV_INSTALL_DIR="/home/$SHARED_USER/.local/bin"
+mkdir -p "$NPDEV_INSTALL_DIR"
+
+NPDEV_PLATFORM="linux-x64"
+case "$(uname -m)" in
+  aarch64|arm64) NPDEV_PLATFORM="linux-arm64" ;;
+esac
+
+if [[ -n "$REPO_ROOT" ]] && [[ -f "$REPO_ROOT/client/interactive/dist/npdev-${NPDEV_PLATFORM}" ]]; then
+  cp "$REPO_ROOT/client/interactive/dist/npdev-${NPDEV_PLATFORM}" "$NPDEV_INSTALL_DIR/npdev"
+  ok "Installed npdev from repo build (${NPDEV_PLATFORM})"
+elif [[ -n "$REPO_ROOT" ]] && [[ -f "$REPO_ROOT/client/interactive/dist/npdev" ]]; then
+  cp "$REPO_ROOT/client/interactive/dist/npdev" "$NPDEV_INSTALL_DIR/npdev"
+  ok "Installed npdev from repo build (unplatformed)"
+else
+  info "Downloading npdev-${NPDEV_PLATFORM} from GitHub releases..."
+  if curl -fsSL -o "$NPDEV_INSTALL_DIR/npdev" \
+    "https://github.com/kapitolph/npdev/releases/latest/download/npdev-${NPDEV_PLATFORM}" 2>/dev/null; then
+    ok "Installed npdev from GitHub releases (${NPDEV_PLATFORM})"
+  else
+    warn "Could not download npdev binary — install manually with: npdev update"
+  fi
+fi
+chmod +x "$NPDEV_INSTALL_DIR/npdev" 2>/dev/null || true
+chown -R "$SHARED_USER:$SHARED_GROUP" "$NPDEV_INSTALL_DIR"
+ok "npdev CLI available on VPS"
+
+# ─── Step 16: Configure dev user's shell PATH ────────────────────────────────
 info "Configuring shell environment..."
 
 BASHRC="/home/$SHARED_USER/.bashrc"
