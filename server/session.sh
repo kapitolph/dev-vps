@@ -226,55 +226,47 @@ cmd_describe() {
 
 cmd_session_data() {
   # Output JSON combining registry data + tmux session_activity timestamps
-  # Only returns active sessions
-  local active_names
-  active_names=$(awk '
-    /^  - name:/ { name = $3 }
-    /status: active/ { print name }
-  ' "$REGISTRY" | sort -u)
+  # Single awk pass: collect all fields per block, emit active entries
+  # Format: name|type|description|owner|created_at (one per line)
+  local entries
+  entries=$(awk '
+    /^  - name:/ {
+      if (status == "active" && name != "") print name "|" type "|" desc "|" owner "|" created
+      name = $3; type = ""; desc = ""; owner = "unknown"; created = ""; status = ""
+    }
+    !/^  - name:/ && /type:/ { type = $2 }
+    /description:/ {
+      d = $0; sub(/^[[:space:]]*description:[[:space:]]*"?/, "", d); sub(/"$/, "", d); desc = d
+    }
+    /owner:/ { owner = $2 }
+    /status:/ { status = $2 }
+    /created_at:/ {
+      c = $0; sub(/^[[:space:]]*created_at:[[:space:]]*"?/, "", c); sub(/"$/, "", c); created = c
+    }
+    END {
+      if (status == "active" && name != "") print name "|" type "|" desc "|" owner "|" created
+    }
+  ' "$REGISTRY" | sort -u -t'|' -k1,1)
 
   local first=1
   printf '['
-  for sname in $active_names; do
+  while IFS='|' read -r sname stype sdesc sowner screated; do
+    [[ -z "$sname" ]] && continue
     # Skip sessions that no longer have a tmux process
     tmux_running "$sname" || continue
 
-    local type desc owner created_at last_activity
-    type=$(awk -v name="$sname" '
-      /^  - name:/ { current = $3; active = 0 }
-      current == name && /status: active/ { active = 1 }
-      current == name && active && /type:/ { print $2; exit }
-    ' "$REGISTRY")
-    desc=$(awk -v name="$sname" '
-      /^  - name:/ { current = $3; active = 0 }
-      current == name && /status: active/ { active = 1 }
-      current == name && active && /description:/ {
-        sub(/^[[:space:]]*description:[[:space:]]*"?/, ""); sub(/"$/, "")
-        print; exit
-      }
-    ' "$REGISTRY")
-    owner=$(awk -v name="$sname" '
-      /^  - name:/ { current = $3; active = 0 }
-      current == name && /status: active/ { active = 1 }
-      current == name && active && /owner:/ { print $2; exit }
-    ' "$REGISTRY")
-    [[ -z "$owner" ]] && owner="unknown"
-    created_at=$(awk -v name="$sname" '
-      /^  - name:/ { current = $3; active = 0 }
-      current == name && /status: active/ { active = 1 }
-      current == name && active && /created_at:/ {
-        sub(/^[[:space:]]*created_at:[[:space:]]*"?/, ""); sub(/"$/, "")
-        print; exit
-      }
-    ' "$REGISTRY")
-    # Get tmux session activity timestamp (epoch)
+    local last_activity
     last_activity=$(tmux -f "$TMUX_CONF" display-message -p -t "$sname" '#{session_activity}' 2>/dev/null || echo "")
+
+    # Escape JSON-unsafe characters in description
+    local safe_desc
+    safe_desc=$(printf '%s' "$sdesc" | sed 's/\\/\\\\/g; s/"/\\"/g' | tr -d '\000-\037')
 
     [[ $first -eq 0 ]] && printf ','
     first=0
     printf '{"name":"%s","type":"%s","description":"%s","owner":"%s","created_at":"%s","last_activity":"%s"}' \
-      "$sname" "$type" "$desc" "$owner" "$created_at" "$last_activity"
-  done
+      "$sname" "$stype" "$safe_desc" "$sowner" "$screated" "$last_activity"
+  done <<< "$entries"
   printf ']\n'
 }
 

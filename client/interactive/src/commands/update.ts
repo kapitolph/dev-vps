@@ -1,8 +1,7 @@
 import * as p from "@clack/prompts";
+import { join } from "path";
 import { writeFile, chmod, mkdir } from "fs/promises";
 import { MACHINES_FILE, npdevDir } from "../lib/config";
-import { NPDEV_VERSION } from "../lib/version";
-
 const GITHUB_REPO = "kapitolph/dev-vps";
 
 export async function cmdUpdate(): Promise<void> {
@@ -26,6 +25,22 @@ export async function cmdUpdate(): Promise<void> {
     process.exit(1);
   }
 
+  // Fetch latest version from source
+  let newVersion = "unknown";
+  try {
+    const vResp = await fetch(
+      `https://raw.githubusercontent.com/${GITHUB_REPO}/main/client/interactive/src/lib/version.ts`,
+      { signal: AbortSignal.timeout(3000) }
+    );
+    if (vResp.ok) {
+      const text = await vResp.text();
+      const match = text.match(/NPDEV_VERSION\s*=\s*"([^"]+)"/);
+      if (match) newVersion = match[1];
+    }
+  } catch {
+    // continue with "unknown"
+  }
+
   // Update binary
   s.start("Fetching latest npdev binary");
   try {
@@ -44,5 +59,11 @@ export async function cmdUpdate(): Promise<void> {
     s.stop("Failed to fetch binary (may not be released yet — using current version)");
   }
 
-  p.outro(`npdev is at v${NPDEV_VERSION}`);
+  // Clear version cache so next run picks up fresh state
+  try {
+    const { unlink } = await import("fs/promises");
+    await unlink(join(npdevDir(), ".version-check"));
+  } catch {}
+
+  p.outro(`npdev is now at v${newVersion}`);
 }
