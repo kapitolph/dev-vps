@@ -201,23 +201,24 @@ export function App({ machine, npdevUser, version, isOnVPS, initialMoshEnabled, 
             description: "Configure your developer identity (git + GitHub)",
             action: () => setRoute({ page: "setup" }),
           },
-          {
-            key: "m",
-            label: `${moshEnabled ? "☑" : "☐"} Mosh`,
-            description: "Resilient connection — survives Wi-Fi drops, roaming, and high latency",
-            action: () => {
-              if (moshEnabled) {
-                setMoshEnabled(false);
-                saveConfigField("NPDEV_MOSH", "off");
-              } else if (isMoshInstalled()) {
-                setMoshEnabled(true);
-                saveConfigField("NPDEV_MOSH", "on");
-              } else {
-                setRoute({ page: "mosh-install" });
-              }
-            },
-            highlight: moshEnabled,
-          },
+          // TODO: unhide mosh button once UDP ports are exposed on VPS
+          // {
+          //   key: "m",
+          //   label: `${moshEnabled ? "☑" : "☐"} Mosh`,
+          //   description: "Resilient connection — survives Wi-Fi drops, roaming, and high latency",
+          //   action: () => {
+          //     if (moshEnabled) {
+          //       setMoshEnabled(false);
+          //       saveConfigField("NPDEV_MOSH", "off");
+          //     } else if (isMoshInstalled()) {
+          //       setMoshEnabled(true);
+          //       saveConfigField("NPDEV_MOSH", "on");
+          //     } else {
+          //       setRoute({ page: "mosh-install" });
+          //     }
+          //   },
+          //   active: moshEnabled,
+          // },
           {
             key: "u",
             label: "Update",
