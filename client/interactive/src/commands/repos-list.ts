@@ -1,4 +1,4 @@
-import { deriveRepoName, fetchRepos, fetchSessions } from "../lib/sessions";
+import { fetchRepos, fetchSessions, sessionsForRepo } from "../lib/sessions";
 import type { Machine } from "../types";
 
 export async function cmdReposList(machine: Machine, opts: { json?: boolean } = {}): Promise<void> {
@@ -9,7 +9,7 @@ export async function cmdReposList(machine: Machine, opts: { json?: boolean } = 
 
   if (opts.json) {
     const enriched = repos.map(r => {
-      const repoSessions = sessions.filter(s => s.pane_cwd && s.pane_cwd.startsWith(r.path));
+      const repoSessions = sessionsForRepo(sessions, repos, r.path);
       const activeUsers = [...new Set(
         repoSessions
           .filter(s => parseInt(s.client_count || "0", 10) > 0)

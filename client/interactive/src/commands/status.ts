@@ -1,4 +1,4 @@
-import { activityAge, fetchRepos, fetchSessions, relativeTime } from "../lib/sessions";
+import { activityAge, fetchRepos, fetchSessions, relativeTime, sessionsForRepo } from "../lib/sessions";
 import type { Machine } from "../types";
 
 export async function cmdStatus(machine: Machine, opts: { json?: boolean } = {}): Promise<void> {
@@ -32,7 +32,7 @@ export async function cmdStatus(machine: Machine, opts: { json?: boolean } = {})
         list: sessions,
       },
       repos: repos.map(r => {
-        const repoSessions = sessions.filter(s => s.pane_cwd && s.pane_cwd.startsWith(r.path));
+        const repoSessions = sessionsForRepo(sessions, repos, r.path);
         return { ...r, session_count: repoSessions.length };
       }),
       active_users: activeUsers,
@@ -64,7 +64,7 @@ export async function cmdStatus(machine: Machine, opts: { json?: boolean } = {})
   // Repos summary
   console.log(`Repos: ${repos.length}`);
   for (const r of repos) {
-    const count = sessions.filter(s => s.pane_cwd && s.pane_cwd.startsWith(r.path)).length;
+    const count = sessionsForRepo(sessions, repos, r.path).length;
     console.log(`  ${r.name.padEnd(24)}  ${r.branch.padEnd(12)}  ${count > 0 ? `${count} session(s)` : "-"}`);
   }
 }

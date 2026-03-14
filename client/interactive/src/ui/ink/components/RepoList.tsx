@@ -1,5 +1,6 @@
 import { Box, Text } from "ink";
 import type { RepoData, SessionData } from "../../../types";
+import { sessionsForRepo } from "../../../lib/sessions";
 import { useTheme } from "../context/ThemeContext";
 
 interface Props {
@@ -48,8 +49,8 @@ export function RepoList({
       {aboveCount > 0 && <Text color={theme.overlay1}> {"\u2191"} {aboveCount} more</Text>}
       {visibleRepos.map((repo, i) => {
         const isSelected = focused && scrollOffset + i === selectedIndex;
-        const activeUsers = sessions
-          .filter(s => s.pane_cwd && s.pane_cwd.startsWith(repo.path) && parseInt(s.client_count || "0", 10) > 0)
+        const activeUsers = sessionsForRepo(sessions, repos, repo.path)
+          .filter(s => parseInt(s.client_count || "0", 10) > 0)
           .flatMap(s => (s.attached_users || s.owner || "").split(",").filter(Boolean));
         const uniqueUsers = [...new Set(activeUsers)];
 

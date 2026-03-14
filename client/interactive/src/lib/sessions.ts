@@ -31,6 +31,16 @@ export function deriveRepoName(session: SessionData, repos: RepoData[]): string 
   return match?.name;
 }
 
+/** Returns sessions whose most specific repo match is exactly `repoPath` (not a child repo). */
+export function sessionsForRepo(sessions: SessionData[], repos: RepoData[], repoPath: string): SessionData[] {
+  return sessions.filter(s => {
+    if (!s.pane_cwd || !s.pane_cwd.startsWith(repoPath)) return false;
+    // Exclude if a deeper child repo is a better match
+    const deeperMatch = repos.some(r => r.path !== repoPath && r.path.startsWith(repoPath + "/") && s.pane_cwd!.startsWith(r.path));
+    return !deeperMatch;
+  });
+}
+
 export function relativeTime(epoch: string): string {
   if (!epoch) return "unknown";
   const seconds = Math.floor(Date.now() / 1000) - parseInt(epoch, 10);
