@@ -113,7 +113,17 @@ export function App({ machine, npdevUser, version, isOnVPS, initialMoshEnabled, 
     : focusColumn === "repos" ? setRepoScrollOffset
     : setTeamScrollOffset;
 
-  const maxVisible = Math.max(3, rows - 14);
+  // Each session/repo row is 2 lines tall
+  // Chrome: header (logo+info) + buttons + description + status line
+  // Full logo ~10 lines, compact logo ~3 lines, narrow ~2 lines
+  const compactLogo = rows < 30;
+  const chromeHeight = layout === "narrow" ? 8 : compactLogo ? 8 : 14;
+  // Section headers take ~3 lines each (paddingTop + text + paddingBottom)
+  const sectionHeaderHeight = 3;
+  const contentRows = rows - chromeHeight;
+  const maxVisible = Math.max(2, Math.floor((contentRows - sectionHeaderHeight) / 2));
+  // In stacked mode (normal layout with team), each half gets its own section header
+  const maxVisibleStacked = Math.max(2, Math.floor((contentRows - sectionHeaderHeight * 2) / 4));
 
   // Move cursor and scroll offset together
   const moveCursor = useCallback(
@@ -597,7 +607,7 @@ export function App({ machine, npdevUser, version, isOnVPS, initialMoshEnabled, 
             layout={layout}
             width={hasRepos ? Math.floor(contentWidth / 2) - 2 : contentWidth}
             scrollOffset={sessionScrollOffset}
-            maxVisible={hasTeam ? Math.max(2, Math.floor(maxVisible / 2)) : maxVisible}
+            maxVisible={hasTeam ? maxVisibleStacked : maxVisible}
             selected={selected}
           />
         ) : (
@@ -615,7 +625,7 @@ export function App({ machine, npdevUser, version, isOnVPS, initialMoshEnabled, 
             layout={layout}
             width={hasRepos ? Math.floor(contentWidth / 2) - 2 : contentWidth}
             scrollOffset={teamScrollOffset}
-            maxVisible={Math.max(2, Math.floor(maxVisible / 2))}
+            maxVisible={maxVisibleStacked}
           />
         )}
       </Box>
@@ -729,6 +739,7 @@ export function App({ machine, npdevUser, version, isOnVPS, initialMoshEnabled, 
         npdevUser={npdevUser}
         version={version}
         cols={cols}
+        rows={rows}
         layout={layout}
         isOnVPS={isOnVPS}
       />

@@ -21,10 +21,11 @@ const VPS_LINES = [
 interface Props {
   layout: Layout;
   isOnVPS: boolean;
+  compact?: boolean;
 }
 
-export function Logo({ layout, isOnVPS }: Props) {
-  if (layout === "narrow") {
+export function Logo({ layout, isOnVPS, compact }: Props) {
+  if (layout === "narrow" || compact) {
     return (
       <Box gap={1}>
         <Text backgroundColor={BRAND_BLUE} color="#1e1e2e" bold>

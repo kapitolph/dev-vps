@@ -9,11 +9,12 @@ interface Props {
   npdevUser: string;
   version: VersionInfo;
   cols: number;
+  rows: number;
   layout: Layout;
   isOnVPS: boolean;
 }
 
-export function Header({ machineName, npdevUser, version, cols, layout, isOnVPS }: Props) {
+export function Header({ machineName, npdevUser, version, cols, rows, layout, isOnVPS }: Props) {
   const theme = useTheme();
 
   if (layout === "narrow") {
@@ -28,10 +29,13 @@ export function Header({ machineName, npdevUser, version, cols, layout, isOnVPS 
     );
   }
 
+  // Use compact logo when terminal is short (< 30 rows)
+  const compactLogo = rows < 30;
+
   return (
-    <Box flexDirection="column" paddingBottom={1}>
-      <Box paddingX={1} paddingTop={1}>
-        <Logo layout={layout} isOnVPS={isOnVPS} />
+    <Box flexDirection="column" paddingBottom={compactLogo ? 0 : 1}>
+      <Box paddingX={1} paddingTop={compactLogo ? 0 : 1}>
+        <Logo layout={layout} isOnVPS={isOnVPS} compact={compactLogo} />
       </Box>
       <Box paddingX={1} gap={1} paddingTop={1}>
         <Text color={theme.subtext0}>npdev</Text>
