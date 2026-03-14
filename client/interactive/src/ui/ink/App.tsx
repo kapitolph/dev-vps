@@ -687,6 +687,20 @@ export function App({ machine, npdevUser, version, isOnVPS, initialMoshEnabled, 
     </Box>
   );
 
+  // Context-sensitive description for the description area when browsing columns
+  let contextDescription: string | undefined;
+  if (cursorArea === "sessions") {
+    if (focusColumn === "sessions" && mine.length > 0 && sessionCursor < mine.length) {
+      const s = mine[sessionCursor];
+      contextDescription = `Enter your session "${s.name}"`;
+    } else if (focusColumn === "team" && team.length > 0 && teamCursor < team.length) {
+      const s = team[teamCursor];
+      contextDescription = `Join ${s.owner}'s session "${s.name}"`;
+    } else if (focusColumn === "repos" && repos.length > 0 && repoCursor < repos.length) {
+      contextDescription = `View details for ${repos[repoCursor].name}`;
+    }
+  }
+
   const confirmEndName = dashMode.mode === "confirm-end" ? dashMode.sessionName : undefined;
   const confirmBulkNames = dashMode.mode === "confirm-bulk" ? dashMode.sessionNames : undefined;
 
@@ -705,6 +719,7 @@ export function App({ machine, npdevUser, version, isOnVPS, initialMoshEnabled, 
           buttons={buttons}
           focusedIndex={focusedButton}
           isFocusZone={cursorArea === "actions"}
+          contextDescription={cursorArea === "sessions" ? contextDescription : undefined}
         />
       </Box>
       {showStaleNudge && stale.length > 0 && (

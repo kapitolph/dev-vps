@@ -14,11 +14,12 @@ interface Props {
   buttons: ButtonDef[];
   focusedIndex: number;
   isFocusZone: boolean;
+  contextDescription?: string;
 }
 
-export function ButtonBar({ buttons, focusedIndex, isFocusZone }: Props) {
+export function ButtonBar({ buttons, focusedIndex, isFocusZone, contextDescription }: Props) {
   const theme = useTheme();
-  const focusedDesc = isFocusZone ? buttons[focusedIndex]?.description : undefined;
+  const focusedDesc = isFocusZone ? buttons[focusedIndex]?.description : contextDescription;
 
   return (
     <Box flexDirection="column" gap={0}>

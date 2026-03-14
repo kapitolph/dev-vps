@@ -1,10 +1,10 @@
 import { chmod, mkdir, rename, unlink, writeFile } from "node:fs/promises";
-import { Box, Text } from "ink";
+import { Box, Text, useInput } from "ink";
 import { useCallback, useEffect, useState } from "react";
 import { MACHINES_FILE, npdevDir } from "../../../lib/config";
 import { useTheme } from "../context/ThemeContext";
 import { useTerminalSize } from "../hooks/useTerminalSize";
-import { BRAND_BLUE } from "../theme";
+
 
 const GITHUB_REPO = "kapitolph/npdev";
 
@@ -160,23 +160,26 @@ export function UpdatePage({ onDone }: Props) {
 
     await new Promise((r) => setTimeout(r, 500));
 
-    // Done
+    // Done — wait for user keypress (so npdev restarts with new binary)
     setState((s) => ({
       ...s,
       step: "done",
       progress: 1,
       message: `Updated to v${newVersion}`,
     }));
-
-    // Auto-exit after a beat
-    await new Promise((r) => setTimeout(r, 1500));
-    onDone();
-  }, [onDone]);
+  }, []);
 
   // Start update on mount
   useEffect(() => {
     runUpdate();
   }, [runUpdate]);
+
+  // Wait for any keypress to exit when done or error
+  useInput(() => {
+    if (state.step === "done" || state.step === "error") {
+      onDone();
+    }
+  });
 
   const barWidth = Math.min(40, cols - 8);
 
@@ -267,7 +270,7 @@ export function UpdatePage({ onDone }: Props) {
 
           {state.step === "done" && state.newVersion && (
             <Box paddingTop={1}>
-              <Text color={theme.green}>Restart npdev to use v{state.newVersion}</Text>
+              <Text color={theme.green}>Ready — v{state.newVersion} will load on restart</Text>
             </Box>
           )}
         </Box>
@@ -277,13 +280,9 @@ export function UpdatePage({ onDone }: Props) {
 
       <Box paddingX={1}>
         <Text color={theme.overlay0}>
-          {state.step === "done" || state.step === "error" ? (
-            <>
-              <Text color={BRAND_BLUE}>esc</Text> exit
-            </>
-          ) : (
-            "Please wait..."
-          )}
+          {state.step === "done" || state.step === "error"
+            ? "Press any key to restart"
+            : "Please wait..."}
         </Text>
       </Box>
     </Box>
