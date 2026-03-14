@@ -176,6 +176,7 @@ export function App({ machine, npdevUser, version, isOnVPS, initialMoshEnabled, 
     {
       key: "n",
       label: "New",
+      description: "Create a new tmux session",
       action: () => setRoute({ page: "new-session" }),
     },
     ...(stale.length > 0
@@ -183,6 +184,7 @@ export function App({ machine, npdevUser, version, isOnVPS, initialMoshEnabled, 
           {
             key: "c",
             label: `Clean ${stale.length}`,
+            description: `End ${stale.length} stale session${stale.length > 1 ? "s" : ""} (3+ business days idle)`,
             action: () => {
               setSelected(new Set(stale.map((s) => s.name)));
               setDashMode({ mode: "confirm-bulk", sessionNames: stale.map((s) => s.name) });
@@ -190,13 +192,19 @@ export function App({ machine, npdevUser, version, isOnVPS, initialMoshEnabled, 
           },
         ]
       : []),
-    { key: "r", label: "Refresh", action: doRefresh },
+    { key: "r", label: "Refresh", description: "Reload sessions and repos", action: doRefresh },
     ...(!isOnVPS
       ? [
-          { key: "s", label: "Setup", action: () => setRoute({ page: "setup" }) },
+          {
+            key: "s",
+            label: "Setup",
+            description: "Configure your developer identity (git + GitHub)",
+            action: () => setRoute({ page: "setup" }),
+          },
           {
             key: "m",
-            label: moshEnabled ? "Mosh ON" : "Mosh",
+            label: `${moshEnabled ? "☑" : "☐"} Mosh`,
+            description: "Resilient connection — survives Wi-Fi drops, roaming, and high latency",
             action: () => {
               if (moshEnabled) {
                 setMoshEnabled(false);
@@ -213,12 +221,13 @@ export function App({ machine, npdevUser, version, isOnVPS, initialMoshEnabled, 
           {
             key: "u",
             label: "Update",
+            description: version.latest ? `New version available: v${version.latest}` : "Check for npdev updates",
             action: () => setRoute({ page: "update" }),
             highlight: !!version.latest,
           },
         ]
       : []),
-    { key: "q", label: "Quit", action: () => onAction({ type: "exit" }) },
+    { key: "q", label: "Quit", description: "Exit npdev", action: () => onAction({ type: "exit" }) },
   ];
 
   // Clamp focused button when buttons change
