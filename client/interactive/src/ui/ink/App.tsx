@@ -2,7 +2,7 @@ import { Box, useInput } from "ink";
 import { useCallback, useEffect, useState } from "react";
 import { saveConfigField } from "../../lib/config";
 import { isMoshInstalled } from "../../lib/mosh";
-import { deriveRepoName } from "../../lib/sessions";
+import { deriveRepoName, relativeTime } from "../../lib/sessions";
 import { sshExec } from "../../lib/ssh";
 import type { Machine, RepoData, VersionInfo } from "../../types";
 import type { ButtonDef } from "./components/ButtonBar";
@@ -692,12 +692,30 @@ export function App({ machine, npdevUser, version, isOnVPS, initialMoshEnabled, 
   if (cursorArea === "sessions") {
     if (focusColumn === "sessions" && mine.length > 0 && sessionCursor < mine.length) {
       const s = mine[sessionCursor];
-      contextDescription = `Enter your session "${s.name}"`;
+      const attached = (s.attached_users || "").split(",").filter(Boolean);
+      const others = attached.filter(u => u !== npdevUser);
+      const parts = [`Enter your session "${s.name}"`];
+      if (others.length > 0) parts.push(`${others.join(", ")} online`);
+      else if (parseInt(s.client_count || "0", 10) === 0) parts.push(`idle ${relativeTime(s.last_activity)}`);
+      contextDescription = parts.join(" · ");
     } else if (focusColumn === "team" && team.length > 0 && teamCursor < team.length) {
       const s = team[teamCursor];
-      contextDescription = `Join ${s.owner}'s session "${s.name}"`;
+      const attached = (s.attached_users || "").split(",").filter(Boolean);
+      const isActive = parseInt(s.client_count || "0", 10) > 0;
+      const parts = [`Join ${s.owner}'s session "${s.name}"`];
+      if (isActive && attached.length > 0) parts.push(`${attached.join(", ")} online`);
+      else parts.push(`idle ${relativeTime(s.last_activity)}`);
+      contextDescription = parts.join(" · ");
     } else if (focusColumn === "repos" && repos.length > 0 && repoCursor < repos.length) {
-      contextDescription = `View details for ${repos[repoCursor].name}`;
+      const repo = repos[repoCursor];
+      const activeUsers = [...new Set(
+        sessions
+          .filter(s => s.pane_cwd?.startsWith(repo.path) && parseInt(s.client_count || "0", 10) > 0)
+          .flatMap(s => (s.attached_users || s.owner || "").split(",").filter(Boolean)),
+      )];
+      const parts = [`View details for ${repo.name}`];
+      if (activeUsers.length > 0) parts.push(`${activeUsers.join(", ")} active`);
+      contextDescription = parts.join(" · ");
     }
   }
 
