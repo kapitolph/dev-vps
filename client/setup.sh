@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # npdev client installer — idempotent
-# Installs npdev as a standalone compiled binary. No repo clone needed after install.
+# Installs npdev as a shell wrapper + compiled binary (npdev-core).
+# The wrapper hands off SSH exec to avoid Bun stdin contention after Ink.
 #
 # Usage (from repo checkout):
 #   bash client/setup.sh
@@ -17,6 +18,7 @@ die()   { printf '\033[1;31mError: %s\033[0m\n' "$*" >&2; exit 1; }
 
 GITHUB_REPO="kapitolph/npdev"
 NPDEV_DIR="$HOME/.npdev"
+CORE_BIN_DIR="$NPDEV_DIR/bin"
 INSTALL_DIR="$HOME/.local/bin"
 
 # Detect platform
@@ -35,10 +37,10 @@ detect_platform() {
   echo "${os}-${arch}"
 }
 
-# ─── Step 1: Install npdev binary ──────────────────────────────────────────
-info "Installing npdev CLI..."
+# ─── Step 1: Install npdev-core binary ─────────────────────────────────────
+info "Installing npdev-core binary..."
 
-mkdir -p "$NPDEV_DIR" "$INSTALL_DIR"
+mkdir -p "$NPDEV_DIR" "$CORE_BIN_DIR" "$INSTALL_DIR"
 
 PLATFORM="$(detect_platform)"
 
@@ -50,32 +52,46 @@ fi
 REPO_ROOT="${SCRIPT_DIR:+$(dirname "$SCRIPT_DIR")}"
 
 if [[ -n "$REPO_ROOT" ]] && [[ -f "$REPO_ROOT/client/interactive/dist/npdev-${PLATFORM}" ]]; then
-  cp "$REPO_ROOT/client/interactive/dist/npdev-${PLATFORM}" "$INSTALL_DIR/npdev"
-  ok "Installed npdev from repo build (${PLATFORM})"
-elif [[ -n "$REPO_ROOT" ]] && [[ -f "$REPO_ROOT/client/npdev" ]]; then
-  # Fallback: install the bash script if no compiled binary exists
-  cp "$REPO_ROOT/client/npdev" "$INSTALL_DIR/npdev"
-  ok "Installed npdev bash script from repo checkout"
+  cp "$REPO_ROOT/client/interactive/dist/npdev-${PLATFORM}" "$CORE_BIN_DIR/npdev-core"
+  ok "Installed npdev-core from repo build (${PLATFORM})"
 else
   info "Downloading npdev-${PLATFORM} from GitHub releases..."
-  if curl -fsSL -o "$INSTALL_DIR/npdev" \
+  if curl -fsSL -o "$CORE_BIN_DIR/npdev-core" \
     "https://github.com/${GITHUB_REPO}/releases/latest/download/npdev-${PLATFORM}" 2>/dev/null; then
-    ok "Installed npdev from GitHub releases (${PLATFORM})"
+    ok "Installed npdev-core from GitHub releases (${PLATFORM})"
   else
-    # Fallback to bash script
-    warn "No compiled binary for ${PLATFORM}. Falling back to bash script..."
-    curl -fsSL "https://raw.githubusercontent.com/${GITHUB_REPO}/main/client/npdev" -o "$INSTALL_DIR/npdev"
-    ok "Installed npdev bash script from GitHub"
+    die "Failed to download npdev binary for ${PLATFORM}"
   fi
 fi
-chmod +x "$INSTALL_DIR/npdev"
+chmod +x "$CORE_BIN_DIR/npdev-core"
 
 # Ad-hoc sign on macOS — Apple Silicon kills unsigned Mach-O binaries
 if [[ "$(uname -s)" == "Darwin" ]] && command -v codesign &>/dev/null; then
-  codesign -s - "$INSTALL_DIR/npdev" 2>/dev/null && ok "Ad-hoc signed binary for macOS" || true
+  codesign -s - "$CORE_BIN_DIR/npdev-core" 2>/dev/null && ok "Ad-hoc signed binary for macOS" || true
 fi
 
-# ─── Step 2: Install machines.yaml ───────────────────────────────────────
+# ─── Step 2: Install wrapper script ───────────────────────────────────────
+info "Installing npdev wrapper script..."
+
+cat > "$INSTALL_DIR/npdev" << 'WRAPPER'
+#!/usr/bin/env bash
+NPDEV_CORE="${HOME}/.npdev/bin/npdev-core"
+[ -x "$NPDEV_CORE" ] || { echo "npdev-core not found. Run: npdev update" >&2; exit 1; }
+export NPDEV_EXEC_FILE="/tmp/npdev-exec-$$"
+"$NPDEV_CORE" "$@"
+exit_code=$?
+if [ "$exit_code" -eq 10 ] && [ -f "$NPDEV_EXEC_FILE" ]; then
+  cmd=$(cat "$NPDEV_EXEC_FILE")
+  rm -f "$NPDEV_EXEC_FILE"
+  exec bash -c "$cmd"
+fi
+rm -f "$NPDEV_EXEC_FILE"
+exit $exit_code
+WRAPPER
+chmod +x "$INSTALL_DIR/npdev"
+ok "Wrapper script installed"
+
+# ─── Step 3: Install machines.yaml ───────────────────────────────────────
 info "Configuring machines..."
 
 if [[ -n "$REPO_ROOT" ]] && [[ -f "$REPO_ROOT/machines.yaml" ]]; then
@@ -86,7 +102,7 @@ else
   ok "Fetched machines.yaml from GitHub"
 fi
 
-# ─── Step 3: Check PATH ──────────────────────────────────────────────────
+# ─── Step 4: Check PATH ──────────────────────────────────────────────────
 if ! echo "$PATH" | tr ':' '\n' | grep -qx "$INSTALL_DIR"; then
   warn "$INSTALL_DIR is not in your PATH."
   echo "  Add this to your shell config (~/.zshrc or ~/.bashrc):"
@@ -97,7 +113,7 @@ else
   ok "$INSTALL_DIR is in PATH"
 fi
 
-# ─── Step 4: Verify ──────────────────────────────────────────────────────
+# ─── Step 5: Verify ──────────────────────────────────────────────────────
 info "Verifying..."
 
 if command -v npdev &>/dev/null; then

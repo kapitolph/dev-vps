@@ -43,11 +43,15 @@ export async function sshInteractive(
     shellCmd = `exec ssh -t ${optsStr} ${target} ${shellEscape(command)}`;
   }
 
-  // Open /dev/tty directly instead of inheriting Bun's stdin.
-  // After Ink unmounts, Bun's event loop still polls the inherited stdin fd,
-  // stealing bytes from the child process (causing dropped keystrokes and
-  // truncated pastes). By redirecting stdin from /dev/tty in a subshell,
-  // the child gets a clean, uncontested terminal connection.
+  // If the shell wrapper is active, write the command to the exec file and
+  // exit with code 10. The wrapper will exec the command after Bun exits,
+  // giving SSH a clean TTY with no stdin contention.
+  if (process.env.NPDEV_EXEC_FILE) {
+    await Bun.write(process.env.NPDEV_EXEC_FILE, shellCmd);
+    process.exit(10);
+  }
+
+  // Fallback: Bun.spawn with /dev/tty redirect (on-VPS local exec, or direct invocation without wrapper)
   const proc = Bun.spawn(["bash", "-c", `exec < /dev/tty; stty sane 2>/dev/null; ${shellCmd}`], {
     stdout: "inherit",
     stderr: "inherit",
