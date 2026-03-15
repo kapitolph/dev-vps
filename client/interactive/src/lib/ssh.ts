@@ -30,19 +30,30 @@ export async function sshInteractive(
   command: string,
   opts?: { mosh?: boolean },
 ): Promise<number> {
-  let args: string[];
+  let shellCmd: string;
   if (isOnVPS()) {
-    args = ["bash", "-c", command];
+    shellCmd = command;
   } else if (opts?.mosh) {
-    const sshCmd = `ssh -o StrictHostKeyChecking=accept-new`;
-    args = ["mosh", `--ssh=${sshCmd}`, sshTarget(machine), "--", "bash", "-c", command];
+    const target = sshTarget(machine);
+    const sshFlag = `ssh -o StrictHostKeyChecking=accept-new`;
+    shellCmd = `exec mosh --ssh='${sshFlag}' ${target} -- bash -c ${shellEscape(command)}`;
   } else {
-    args = ["ssh", "-t", ...SSH_OPTS, sshTarget(machine), command];
+    const target = sshTarget(machine);
+    const optsStr = SSH_OPTS.map(o => `'${o}'`).join(" ");
+    shellCmd = `exec ssh -t ${optsStr} ${target} ${shellEscape(command)}`;
   }
-  const proc = Bun.spawn(args, {
+
+  // Wrap in bash -c with stty sane to get a clean TTY.
+  // After Ink unmounts, Bun's inherited stdin may still carry raw-mode artifacts
+  // that corrupt the child process. A fresh bash + stty sane resets the line discipline.
+  const proc = Bun.spawn(["bash", "-c", `stty sane 2>/dev/null; ${shellCmd}`], {
     stdin: "inherit",
     stdout: "inherit",
     stderr: "inherit",
   });
   return await proc.exited;
+}
+
+function shellEscape(s: string): string {
+  return `'${s.replace(/'/g, "'\\''")}'`;
 }
